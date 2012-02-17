@@ -200,15 +200,17 @@ class Root(rend.Page):
 
     # In case we configure multiple introducers
     def data_introducers(self, ctx, data):
+        connection_status = []
         connection_status = self.client.connected_to_introducer()          
         s = []
-        furls = self.client.introducer_furls       
+        furls = self.client.introducer_furls    
         for furl in furls:
-            i = furls.index(furl)
-            if connection_status[i]:            
-                s.append( (furl, "Yes") )
-            else:
-                s.append( (furl, "No") )
+            if connection_status:
+                i = furls.index(furl)
+                if connection_status[i]:            
+                    s.append( (furl, "Yes") )
+                else:
+                    s.append( (furl, "No") )
         s.sort()
         return s
 

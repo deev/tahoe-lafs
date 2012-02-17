@@ -188,10 +188,10 @@ class Client(node.Node, pollmixin.PollMixin):
         
         # read furl from tahoe.cfg
         ifurl = self.get_config("client", "introducer.furl", None)
-        if ifurl not in self.introducer_furls: 
+        if ifurl and ifurl not in self.introducer_furls: 
             self.introducer_furls.append(ifurl)
             f = open(cfg, 'a')
-            f.writelines(ifurl)
+            f.write(ifurl)
             f.write('\n')
             f.close()
             if furl_count > 1:
