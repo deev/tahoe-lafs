@@ -173,7 +173,7 @@ class Client(node.Node, pollmixin.PollMixin):
 
     def init_introducer_clients(self):              
         self.introducer_furls = []
-              
+        self.warn_flag = False      
         # Try to load ""BASEDIR/introducers" cfg file
         cfg = os.path.join(self.basedir, MULTI_INTRODUCERS_CFG)
         if os.path.exists(cfg):
@@ -195,6 +195,7 @@ class Client(node.Node, pollmixin.PollMixin):
             f.write('\n')
             f.close()
             if furl_count > 1:
+                self.warn_flag = True
                 self.log("introducers config file modified.")
                 print "Warning! introducers config file modified."
 
