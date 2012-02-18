@@ -2,6 +2,7 @@
 import os
 from twisted.trial import unittest
 from twisted.application import service
+from twisted.python.filepath import FilePath
 
 from foolscap.api import Tub, fireEventually, flushEventualQueue
 
@@ -19,6 +20,8 @@ def flush_but_dont_ignore(res):
 
 class KeyGenService(unittest.TestCase, pollmixin.PollMixin):
     def setUp(self):
+        self.fp = FilePath('test_keygen.KeyGenService')
+        self.fp.createDirectory()
         self.parent = service.MultiService()
         self.parent.startService()
 
@@ -43,7 +46,7 @@ class KeyGenService(unittest.TestCase, pollmixin.PollMixin):
 
         #print 'starting key generator service'
         keysize = TEST_RSA_KEY_SIZE
-        kgs = key_generator.KeyGeneratorService(display_furl=False, default_key_size=keysize)
+        kgs = key_generator.KeyGeneratorService(basedir=self.fp.path, display_furl=False, default_key_size=keysize)
         kgs.key_generator.verbose = True
         kgs.setServiceParent(self.parent)
         kgs.key_generator.pool_size = 8
