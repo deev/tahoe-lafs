@@ -434,43 +434,55 @@ setup_args = {}
 if version:
     setup_args["version"] = version
 
-setup(name=APPNAME,
-      description='secure, decentralized, fault-tolerant filesystem',
-      long_description=open('README.txt', 'rU').read(),
-      author='the Tahoe-LAFS project',
-      author_email='tahoe-dev@tahoe-lafs.org',
-      url='https://tahoe-lafs.org/',
-      license='GNU GPL', # see README.txt -- there is an alternative licence
-      cmdclass={"trial": Trial,
-                "make_executable": MakeExecutable,
-                "update_version": UpdateVersion,
-                "sdist": MySdist,
-                },
-      package_dir = {'':'src'},
-      packages=['allmydata',
-                'allmydata.frontends',
-                'allmydata.immutable',
-                'allmydata.immutable.downloader',
-                'allmydata.introducer',
-                'allmydata.mutable',
-                'allmydata.scripts',
-                'allmydata.storage',
-                'allmydata.test',
-                'allmydata.util',
-                'allmydata.web',
-                'allmydata.web.static',
-                'allmydata.windows',
-                'buildtest'],
-      classifiers=trove_classifiers,
-      test_suite="allmydata.test",
-      install_requires=install_requires,
-      tests_require=tests_require,
-      package_data={"allmydata.web": ["*.xhtml"],
-                    "allmydata.web.static": ["*.js", "*.png", "*.css"],
+#  distutils in Python 2.4 has a bug in that it tries to encode the long
+#  description into ascii. We detect the resulting exception and try again
+#  after squashing the long description (lossily) into ascii.
+
+def _setup(long_description):
+    setup(name=APPNAME,
+          description='secure, decentralized, fault-tolerant filesystem',
+          long_description=long_description,
+          author='the Tahoe-LAFS project',
+          author_email='tahoe-dev@tahoe-lafs.org',
+          url='https://tahoe-lafs.org/',
+          license='GNU GPL', # see README.txt -- there is an alternative licence
+          cmdclass={"trial": Trial,
+                    "make_executable": MakeExecutable,
+                    "update_version": UpdateVersion,
+                    "sdist": MySdist,
                     },
-      setup_requires=setup_requires,
-      entry_points = { 'console_scripts': [ 'tahoe = allmydata.scripts.runner:run' ] },
-      zip_safe=False, # We prefer unzipped for easier access.
-      versionfiles=['src/allmydata/_version.py',],
-      **setup_args
-      )
+          package_dir = {'':'src'},
+          packages=['allmydata',
+                    'allmydata.frontends',
+                    'allmydata.immutable',
+                    'allmydata.immutable.downloader',
+                    'allmydata.introducer',
+                    'allmydata.mutable',
+                    'allmydata.scripts',
+                    'allmydata.storage',
+                    'allmydata.test',
+                    'allmydata.util',
+                    'allmydata.web',
+                    'allmydata.web.static',
+                    'allmydata.windows',
+                    'buildtest'],
+          classifiers=trove_classifiers,
+          test_suite="allmydata.test",
+          install_requires=install_requires,
+          tests_require=tests_require,
+          package_data={"allmydata.web": ["*.xhtml"],
+                        "allmydata.web.static": ["*.js", "*.png", "*.css"],
+                        },
+          setup_requires=setup_requires,
+          entry_points = { 'console_scripts': [ 'tahoe = allmydata.scripts.runner:run' ] },
+          zip_safe=False, # We prefer unzipped for easier access.
+          versionfiles=['src/allmydata/_version.py',],
+          **setup_args
+          )
+
+try:
+    long_description=open('README.txt', 'rU').read()
+    _setup(long_description)
+except UnicodeEncodeError:
+    long_description = repr(long_description)
+    _setup(long_description)
