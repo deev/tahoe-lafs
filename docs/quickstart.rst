@@ -1,31 +1,43 @@
 ﻿
-==================
-Getting Tahoe-LAFS
-==================
+============================================
+Want to Securely Store and Share Your Files?
+============================================
 
 Welcome to `the Tahoe-LAFS project`_, a secure, decentralized, fault-tolerant
 storage system.
 
-`about Tahoe-LAFS <about.rst>`__
+`What Makes Tahoe-LAFS Different`_
+
+This page will get the software installed, and `the next page`_ will show you
+how to use it.
 
 .. _the Tahoe-LAFS project: https://tahoe-lafs.org
+.. _What Makes Tahoe-LAFS Different: about.rst
+.. _the next page: running.rst
 
 How To Get Tahoe-LAFS
-=====================
+---------------------
+
+See if Tahoe-LAFS is already `packaged for your system`_.
+
+Or, run it from source. This doesn't require installing it into your system
+and it doesn't require root privileges.
 
 This procedure has been verified to work on Windows, Mac, OpenSolaris, and
-too many flavors of Linux and of BSD to list. It's likely to work on other
-platforms.
+too many flavors of Linux and of BSD to list.
+
+.. _packaged for your system: https://tahoe-lafs.org/trac/tahoe-lafs/wiki/OSPackages
 
 In Case Of Trouble
 ------------------
 
-There are a few 3rd party libraries that Tahoe-LAFS depends on that might not
-be easy to set up on your platform. If the following instructions don't Just
-Work without any further effort on your part, then please write to `the
-tahoe-dev mailing list`_ where friendly hackers will help you out.
+There are a few 3rd-party libraries that Tahoe-LAFS depends on that might
+fail to build on your platform. If the following instructions don't work,
+then please write to `the tahoe-dev mailing list`_ where friendly developers
+will help you out. If you get a compile error, please read `this page`_
 
 .. _the tahoe-dev mailing list: https://tahoe-lafs.org/cgi-bin/mailman/listinfo/tahoe-dev
+.. _this page: https://tahoe-lafs.org/trac/tahoe-lafs/wiki/CompileError
 
 Install Python
 --------------
@@ -72,4 +84,4 @@ Run Tahoe-LAFS
 
 Now you are ready to deploy a decentralized filesystem. The ``tahoe``
 executable in the ``bin`` directory can configure and launch your Tahoe-LAFS
-nodes. See `<running.rst>`__ for instructions on how to do that.
+nodes. See `the next page`_ for instructions on how to do that.
