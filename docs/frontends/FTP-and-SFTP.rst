@@ -38,20 +38,37 @@ for details.
 Tahoe-LAFS Support
 ==================
 
+<<<<<<< HEAD
 All Tahoe-LAFS client nodes can run a frontend SFTP server, allowing regular
 SFTP clients (like ``/usr/bin/sftp``, the ``sshfs`` FUSE plugin, and many
 others) to access the virtual filesystem. They can also run an FTP server,
 so FTP clients (like ``/usr/bin/ftp``, ``ncftp``, and others) can too. These
 frontends sit at the same level as the web-API interface.
+=======
+All Tahoe-LAFS client nodes can run an SFTP server, so SFTP clients (like
+/usr/bin/sftp, the sshfs FUSE plugin, and others) can access the virtual filesystem. 
+
+They can also run a frontend FTP server, allowing regular FTP clients (like
+/usr/bin/ftp, ncftp, and countless others) to as well.
+
+These frontends sit at the same level as the web-API interface.
+>>>>>>> c87e4e048e2843618463588ccc14b232541dfa18
 
 Since Tahoe-LAFS does not use user accounts or passwords, the SFTP/FTP
 servers must be configured with a way to first authenticate a user (confirm
 that a prospective client has a legitimate claim to whatever authorities we
 might grant a particular user), and second to decide what directory cap
+<<<<<<< HEAD
 should be used as the root directory for a log-in by the authenticated user.
 A username and password is used for this purpose. (The SFTP protocol is also
 capable of using client RSA or DSA public keys, but this is not currently
 implemented in Tahoe-LAFS.)
+=======
+should be granted to the authenticated username. A username and password is
+used for this purpose. (The SFTP protocol is also capable of using client RSA
+or DSA public keys, but this is not currently implemented in the Tahoe-LAFS
+SFTP server.)
+>>>>>>> c87e4e048e2843618463588ccc14b232541dfa18
 
 Tahoe-LAFS provides two mechanisms to perform this user-to-cap mapping. The
 first is a simple flat file with one account per line. The second is an
@@ -90,7 +107,11 @@ fields, with three parameters:
 
 • action: "authenticate" (this is a static string, for backwards
   compatibility with the old AllMyData authentication service)
+<<<<<<< HEAD
 • email: USERNAME (Tahoe-LAFS has no notion of email addresses, but the
+=======
+• email: USERNAME (Tahoe has no notion of email addresses, but the
+>>>>>>> c87e4e048e2843618463588ccc14b232541dfa18
   authentication service uses them as account names, so the interface
   presents this argument as "email" rather than "username").
 • passwd: PASSWORD
@@ -173,7 +194,11 @@ the BASEDIR/tahoe.cfg file::
  [ftpd]
  enabled = true
  port = tcp:8021:interface=127.0.0.1
+<<<<<<< HEAD
  accounts.file = private/accounts
+=======
+ accounts.file = private/ftp.accounts
+>>>>>>> c87e4e048e2843618463588ccc14b232541dfa18
 
 The FTP server will listen on the given port number and on the loopback
 interface only. The "accounts.file" pathname will be interpreted relative to
@@ -243,6 +268,7 @@ Known Issues
 
 Known Issues in the SFTP Frontend
 ---------------------------------
+<<<<<<< HEAD
 
 Upload errors may not be reported when writing files using SFTP via sshfs
 (`ticket #1059`_).
@@ -259,6 +285,34 @@ Known Issues in the FTP Frontend
 --------------------------------
 
 Mutable files are not supported by the FTP frontend (`ticket #680`_).
+
+Non-ASCII filenames are not supported by FTP (`ticket #682`_).
+
+=======
+
+Upload errors may not be reported when writing files using SFTP via sshfs
+(`ticket #1059`_).
+
+Non-ASCII filenames are supported with SFTP only if the client encodes
+filenames as UTF-8 (`ticket #1089`_).
+
+The gateway node may hang or consume 100% CPU if the client tries to rekey.
+(`ticket #1297`_).  This is due to a bug in Twisted (`Twisted ticket #4395`_)
+which was fixed in Twisted 11.0 (released 3-April-2011).
+
+See also wiki:SftpFrontend_.
+
+.. _ticket #1059: https://tahoe-lafs.org/trac/tahoe-lafs/ticket/1059
+.. _ticket #1089: https://tahoe-lafs.org/trac/tahoe-lafs/ticket/1089
+.. _ticket #1297: https://tahoe-lafs.org/trac/tahoe-lafs/ticket/1297
+.. _Twisted ticket #4395: https://twistedmatrix.com/trac/ticket/4395
+
+Known Issues in the FTP Frontend
+--------------------------------
+
+Mutable files are not supported by the FTP frontend (`ticket
+#680`_). Currently, a directory containing mutable files cannot even be
+listed over FTP.
 
 Non-ASCII filenames are not supported by FTP (`ticket #682`_).
 
