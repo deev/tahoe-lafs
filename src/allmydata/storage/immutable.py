@@ -7,7 +7,7 @@ from allmydata.interfaces import RIBucketWriter, RIBucketReader
 from allmydata.util import base32, fileutil, log
 from allmydata.util.assertutil import precondition
 from allmydata.storage.common import UnknownImmutableContainerVersionError, \
-     DataTooLargeError
+     DataTooLargeError, si_b2a
 
 # each share file (in storage/shares/$SI/$SHNUM) contains lease information
 # and share data. The share data is accessed by RIBucketWriter.write and
@@ -107,19 +107,21 @@ class ShareFile:
 class BucketWriter(Referenceable):
     implements(RIBucketWriter)
 
-    def __init__(self, ss, incominghome, finalhome, max_size, lease_info, canary):
+    def __init__(self, ss, account, prefix, storage_index, shnum,
+                 incominghome, finalhome, max_size, canary):
         self.ss = ss
         self.incominghome = incominghome
         self.finalhome = finalhome
         self._max_size = max_size # don't allow the client to write more than this
+        self._account = account
+        self._prefix = prefix
+        self._storage_index = storage_index
+        self._shnum = shnum
         self._canary = canary
         self._disconnect_marker = canary.notifyOnDisconnect(self._disconnected)
         self.closed = False
         self.throw_out_all_data = False
         self._sharefile = ShareFile(incominghome, create=True, max_size=max_size)
-        # also, add our lease to the file now, so that other ones can be
-        # added by simultaneous uploaders
-        self._sharefile.add_lease(lease_info)
 
     def allocated_size(self):
         return self._max_size
@@ -171,6 +173,11 @@ class BucketWriter(Referenceable):
         self.ss.bucket_writer_closed(self, filelen)
         self.ss.add_latency("close", time.time() - start)
         self.ss.count("close")
+        self._account.add_share(self._prefix,
+                                si_b2a(self._storage_index), self._shnum,
+                                self.finalhome, commit=False)
+        self._account.add_lease(si_b2a(self._storage_index), self._shnum,
+                                commit=True)
 
     def _disconnected(self):
         if not self.closed:

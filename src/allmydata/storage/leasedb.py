@@ -132,25 +132,29 @@ class LeaseDB:
         # have noticed it yet, so test for an existing entry and use it if
         # present. (and check the code paths carefully to make sure that
         # doesn't get too weird).
-        print "ADD_NEW_SHARE", storage_index, shnum
+
+        #print "ADD_NEW_SHARE", storage_index, shnum
         self._dirty = True
+        # FIXME: add in STATE_COMING, change to STATE_STABLE when share is
+        # confirmed stored by backend.
         self._cursor.execute("INSERT INTO `shares`"
-                             " VALUES (?,?,?,?,?)",
-                             (None, prefix, storage_index, shnum, size))
+                             " VALUES (?,?,?,?,?,?)",
+                             (None, prefix, storage_index, shnum, size, STATE_STABLE))
         shareid = self._cursor.lastrowid
         return shareid
 
     def add_starter_lease(self, shareid):
         self._dirty = True
+        renewal_time = time.time()
         self._cursor.execute("INSERT INTO `leases`"
-                             " VALUES (?,?,?,?)",
+                             " VALUES (?,?,?,?,?)",
                              (None, shareid, self.STARTER_LEASE_ACCOUNTID,
-                              int(time.time()+self.STARTER_LEASE_DURATION)))
+                              int(renewal_time), int(renewal_time + self.STARTER_LEASE_DURATION)))
         leaseid = self._cursor.lastrowid
         return leaseid
 
     def remove_deleted_shares(self, shareids):
-        print "REMOVE_DELETED_SHARES", shareids
+        #print "REMOVE_DELETED_SHARES", shareids
         # TODO: replace this with a sensible DELETE, join, and sub-SELECT
         shareids2 = []
         for deleted_shareid in shareids:
@@ -176,7 +180,7 @@ class LeaseDB:
     # lease management
 
     def add_or_renew_leases(self, storage_index, shnum, ownerid,
-                            expiration_time):
+                            renewal_time, expiration_time):
         # shnum=None means renew leases on all shares
         self._dirty = True
         if shnum is None:
@@ -198,12 +202,12 @@ class LeaseDB:
             row = self._cursor.fetchone()
             if row:
                 leaseid = row[0]
-                self._cursor.execute("UPDATE `leases` SET expiration_time=?"
+                self._cursor.execute("UPDATE `leases` SET renewal_time=?,expiration_time=?"
                                      " WHERE `id`=?",
-                                     (expiration_time, leaseid))
+                                     (renewal_time, expiration_time, leaseid))
             else:
-                self._cursor.execute("INSERT INTO `leases` VALUES (?,?,?,?)",
-                                     (None, shareid, ownerid, expiration_time))
+                self._cursor.execute("INSERT INTO `leases` VALUES (?,?,?,?,?)",
+                                     (None, shareid, ownerid, renewal_time, expiration_time))
 
     # account management
 
