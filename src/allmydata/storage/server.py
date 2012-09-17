@@ -268,8 +268,6 @@ class StorageServer(service.MultiService):
         # file, they'll want us to hold leases for this file.
         for (shnum, fn) in self._get_bucket_shares(storage_index):
             alreadygot.add(shnum)
-            sf = ShareFile(fn)
-            sf.add_or_renew_lease(lease_info)
 
         for shnum in sharenums:
             incominghome = os.path.join(self.incomingdir, si_dir, "%d" % shnum)
