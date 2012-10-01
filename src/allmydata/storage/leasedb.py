@@ -8,7 +8,7 @@ shnum, and used space). It can also instruct the storage backend to delete
 a share that has expired.
 """
 
-import os, time, re, simplejson
+import os, time, simplejson
 
 from twisted.python.filepath import FilePath
 
@@ -136,6 +136,7 @@ MONTH = 30*DAY
 class LeaseDB:
     RETAINED_HISTORY_ENTRIES = 10
 
+    ANONYMOUS_ACCOUNTID = 0
     STARTER_LEASE_ACCOUNTID = 1
     STARTER_LEASE_DURATION = 2*MONTH
 
@@ -341,60 +342,6 @@ class LeaseDB:
         self._cursor.execute("SELECT `cycle`,`json` FROM `crawler_history`")
         rows = self._cursor.fetchall()
         return dict(rows)
-
-    # account management
-
-    def get_account_usage(self, accountid):
-        self._cursor.execute("SELECT SUM(`used_space`) FROM shares"
-                             " WHERE `storage_index`, `shnum` IN"
-                             "  (SELECT DISTINCT `storage_index`, `shnum` FROM `leases`"
-                             "   WHERE `account_id`=?)",
-                             (accountid,))
-        row = self._cursor.fetchone()
-        if not row or not row[0]: # XXX why did I need the second clause?
-            return 0
-        return row[0]
-
-    def get_account_attribute(self, accountid, name):
-        self._cursor.execute("SELECT `value` FROM `account_attributes`"
-                             " WHERE `account_id`=? AND `name`=?",
-                             (accountid, name))
-        row = self._cursor.fetchone()
-        if row:
-            return row[0]
-        return None
-
-    def set_account_attribute(self, accountid, name, value):
-        if self.debug: print "SET_ACCOUNT_ATTRIBUTE", accountid, name, value
-        self._cursor.execute("SELECT `id` FROM `account_attributes`"
-                             " WHERE `account_id`=? AND `name`=?",
-                             (accountid, name))
-        row = self._cursor.fetchone()
-        if row:
-            attrid = row[0]
-            self._cursor.execute("UPDATE `account_attributes`"
-                                 " SET `value`=?"
-                                 " WHERE `id`=?",
-                                 (value, attrid))
-        else:
-            self._cursor.execute("INSERT INTO `account_attributes`"
-                                 " VALUES (?,?,?,?)",
-                                 (None, accountid, name, value))
-        self.commit(always=True)
-
-    def get_or_allocate_ownernum(self, pubkey_vs):
-        if not re.search(r'^[a-zA-Z0-9+-_]+$', pubkey_vs):
-            raise BadAccountName("unacceptable characters in pubkey")
-        self._cursor.execute("SELECT `id` FROM `accounts` WHERE `pubkey_vs`=?",
-                             (pubkey_vs,))
-        row = self._cursor.fetchone()
-        if row:
-            return row[0]
-        self._cursor.execute("INSERT INTO `accounts` VALUES (?,?,?)",
-                             (None, pubkey_vs, int(time.time())))
-        accountid = self._cursor.lastrowid
-        self.commit(always=True)
-        return accountid
 
     def get_account_creation_time(self, owner_num):
         self._cursor.execute("SELECT `creation_time` from `accounts`"

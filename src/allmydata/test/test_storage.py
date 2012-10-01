@@ -3236,7 +3236,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         ep = ExpirationPolicy(enabled=True, mode="age", override_lease_duration=2000)
         server = InstrumentedStorageServer(basedir, "\x00" * 20, expiration_policy=ep)
         ss = server.get_accountant().get_anonymous_account()
-        ss2 = server.get_accountant().get_account("somekey")
+        ss2 = server.get_accountant().get_starter_account()
 
         # make it start sooner than usual.
         lc = server.get_accounting_crawler()
@@ -3373,7 +3373,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         ep = ExpirationPolicy(enabled=True, mode="cutoff-date", cutoff_date=then)
         server = InstrumentedStorageServer(basedir, "\x00" * 20, expiration_policy=ep)
         ss = server.get_accountant().get_anonymous_account()
-        ss2 = server.get_accountant().get_account("somekey")
+        ss2 = server.get_accountant().get_starter_account()
 
         # make it start sooner than usual.
         lc = server.get_accounting_crawler()
@@ -3515,7 +3515,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         ep = ExpirationPolicy(enabled=True, mode="cutoff-date", cutoff_date=then, sharetypes=("immutable",))
         server = StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
         ss = server.get_accountant().get_anonymous_account()
-        ss2 = server.get_accountant().get_account("somekey")
+        ss2 = server.get_accountant().get_starter_account()
         lc = server.get_accounting_crawler()
         lc.slow_start = 0
         webstatus = StorageStatus(ss)
@@ -3571,7 +3571,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         ep = ExpirationPolicy(enabled=True, mode="cutoff-date", cutoff_date=then, sharetypes=("mutable",))
         server = StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
         ss = server.get_accountant().get_anonymous_account()
-        ss2 = server.get_accountant().get_account("somekey")
+        ss2 = server.get_accountant().get_starter_account()
         lc = server.get_accounting_crawler()
         lc.slow_start = 0
         webstatus = StorageStatus(ss)

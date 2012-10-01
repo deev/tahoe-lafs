@@ -32,14 +32,6 @@ class Account(Referenceable):
         self.connected = False
         self.connected_since = None
         self.connection = None
-        self.can_write = True
-        self.can_read = True
-        self.can_save = True
-        import random
-        self.account_message = {
-            "message": "free storage! %d" % random.randint(0,10),
-            "fancy": "free pony if you knew how to ask",
-            }
         self.debug = True
 
     def is_static(self):
@@ -158,49 +150,11 @@ class Account(Referenceable):
         return self.server.client_advise_corrupt_share(
             share_type, storage_index, shnum, reason)
 
-
-    # these are the non-RIStorageServer methods, some remote, some local
-
-    def get_account_attribute(self, name):
-        return self._leasedb.get_account_attribute(self.owner_num, name)
-
-    def set_account_attribute(self, name, value):
-        self._leasedb.set_account_attribute(self.owner_num, name, value)
-
     def get_account_creation_time(self):
         return self._leasedb.get_account_creation_time(self.owner_num)
 
-    def remote_get_status(self):
-        return self.get_status()
-
-    def get_status(self):
-        return { "write": self.can_write,
-                 "read":  self.can_read,
-                 "save":  self.can_save,
-               }
-
-    def remote_get_account_message(self):
-        return self.account_message
-
-    def set_nickname(self, nickname):
-        if len(nickname) > 1000:
-            raise ValueError("nickname too long")
-        self.set_account_attribute("nickname", nickname)
-
-    def get_nickname(self):
-        n = self.get_account_attribute("nickname")
-        if n:
-            return n
-        return u""
-
     def get_id(self):
         return self.pubkey_vs
-
-    def remote_get_current_usage(self):
-        return self.get_current_usage()
-
-    def get_current_usage(self):
-        return self._leasedb.get_account_usage(self.owner_num)
 
     def get_leases(self, storage_index):
         return self._leasedb.get_leases(storage_index, self.owner_num)
@@ -209,39 +163,23 @@ class Account(Referenceable):
         self.connected = True
         self.connected_since = time.time()
         self.connection = rx
-        rhost = rx.getPeer()
-        from twisted.internet import address
-        if isinstance(rhost, address.IPv4Address):
-            rhost_s = "%s:%d" % (rhost.host, rhost.port)
-        elif "LoopbackAddress" in str(rhost):
-            rhost_s = "loopback"
-        else:
-            rhost_s = str(rhost)
-        self.set_account_attribute("last_connected_from", rhost_s)
+        #rhost = rx.getPeer()
+        #from twisted.internet import address
+        #if isinstance(rhost, address.IPv4Address):
+        #    rhost_s = "%s:%d" % (rhost.host, rhost.port)
+        #elif "LoopbackAddress" in str(rhost):
+        #    rhost_s = "loopback"
+        #else:
+        #    rhost_s = str(rhost)
+        #self.set_account_attribute("last_connected_from", rhost_s)
         rx.notifyOnDisconnect(self._disconnected)
 
     def _disconnected(self):
         self.connected = False
         self.connected_since = None
         self.connection = None
-        self.set_account_attribute("last_seen", int(time.time()))
+        #self.set_account_attribute("last_seen", int(time.time()))
         self.disconnected_since = None
-
-    def _send_status(self):
-        self.connection.callRemoteOnly("status", self.get_status())
-
-    def _send_account_message(self):
-        self.connection.callRemoteOnly("account_message", self.account_message)
-
-    def set_status(self, write, read, save):
-        self.can_write = write
-        self.can_read = read
-        self.can_save = save
-        self._send_status()
-
-    def set_account_message(self, message):
-        self.account_message = message
-        self._send_account_message()
 
     def get_connection_status(self):
         # starts as: connected=False, connected_since=None,
@@ -251,14 +189,14 @@ class Account(Referenceable):
         # after disconnect: connected=False, connected_since=None,
         #                   last_connected_from=HOST, last_seen=STOP
 
-        last_seen = int_or_none(self.get_account_attribute("last_seen"))
-        last_connected_from = self.get_account_attribute("last_connected_from")
+        #last_seen = int_or_none(self.get_account_attribute("last_seen"))
+        #last_connected_from = self.get_account_attribute("last_connected_from")
         created = int_or_none(self.get_account_creation_time())
 
         return {"connected": self.connected,
                 "connected_since": self.connected_since,
-                "last_connected_from": last_connected_from,
-                "last_seen": last_seen,
+                #"last_connected_from": last_connected_from,
+                #"last_seen": last_seen,
                 "created": created,
                 }
 
