@@ -2834,7 +2834,18 @@ def remove_tags(s):
     return s
 
 
-class BucketCounter(unittest.TestCase, pollmixin.PollMixin, ReallyEqualMixin):
+class CrawlerTestMixin:
+    def _wait_for_yield(self, res, crawler):
+        """
+        Wait for the crawler to yield. This should be called at the end of a test
+        so that we leave a clean reactor.
+        """
+        d = crawler.set_hook('yield')
+        d.addCallback(lambda ign: res)
+        return d
+
+
+class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
 
     def setUp(self):
         self.s = service.MultiService()
@@ -2883,19 +2894,17 @@ class BucketCounter(unittest.TestCase, pollmixin.PollMixin, ReallyEqualMixin):
                 self.failUnlessEqual(cycle, 0)
                 progress = ss.bucket_counter.get_progress()
                 self.failUnlessReallyEqual(progress["cycle-in-progress"], False)
-
-                d3 = ss.bucket_counter.set_hook('yield')
-
-                def _on_yield(ign):
-                    html = w.renderSynchronously()
-                    s = remove_tags(html)
-                    self.failUnlessIn("Total buckets: 0 (the number of", s)
-                    self.failUnless("Next crawl in 59 minutes" in s or "Next crawl in 60 minutes" in s, s)
-                d3.addCallback(_on_yield)
-                return d3
             d2.addCallback(_after_first_cycle)
             return d2
         d.addCallback(_after_first_prefix)
+
+        d.addBoth(self._wait_for_yield, ss.bucket_counter)
+        def _after_yield(ign):
+            html = w.renderSynchronously()
+            s = remove_tags(html)
+            self.failUnlessIn("Total buckets: 0 (the number of", s)
+            self.failUnless("Next crawl in 59 minutes" in s or "Next crawl in 60 minutes" in s, s)
+        d.addCallback(_after_yield)
         return d
 
     def test_bucket_counter_cleanup(self):
@@ -2937,6 +2946,7 @@ class BucketCounter(unittest.TestCase, pollmixin.PollMixin, ReallyEqualMixin):
             d2.addCallback(_after_first_cycle)
             return d2
         d.addCallback(_after_first_prefix)
+        d.addBoth(self._wait_for_yield, ss.bucket_counter)
         return d
 
     def test_bucket_counter_eta(self):
@@ -2967,12 +2977,10 @@ class BucketCounter(unittest.TestCase, pollmixin.PollMixin, ReallyEqualMixin):
                 html = w.renderSynchronously()
                 s = remove_tags(html)
                 self.failUnlessIn("complete (ETA ", s)
-
-                # ensure we leave a clean reactor
-                return ss.bucket_counter.set_hook('after_cycle')
             d2.addCallback(_check_2)
             return d2
         d.addCallback(_check_1)
+        d.addBoth(self._wait_for_yield, ss.bucket_counter)
         return d
 
 
