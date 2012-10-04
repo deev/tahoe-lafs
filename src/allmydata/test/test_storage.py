@@ -2995,25 +2995,9 @@ class InstrumentedAccountingCrawler(AccountingCrawler):
         if not self.stop_after_first_bucket:
             self.cpu_slice = 500
 
-class BrokenStatResults:
-    pass
-class No_ST_BLOCKS_AccountingCrawler(AccountingCrawler):
-    def stat(self, fn):
-        s = os.stat(fn)
-        bsr = BrokenStatResults()
-        for attrname in dir(s):
-            if attrname.startswith("_"):
-                continue
-            if attrname == "st_blocks":
-                continue
-            setattr(bsr, attrname, getattr(s, attrname))
-        return bsr
 
 class InstrumentedStorageServer(StorageServer):
     LeaseCheckerClass = InstrumentedAccountingCrawler
-class No_ST_BLOCKS_StorageServer(StorageServer):
-    LeaseCheckerClass = No_ST_BLOCKS_AccountingCrawler
-
 class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixin):
 
     def setUp(self):
@@ -3678,36 +3662,6 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
             self.failUnlessEqual(full["actual-shares"], None)
             self.failUnlessEqual(full["actual-diskbytes"], None)
 
-        d.addCallback(_check)
-        return d
-
-    def test_no_st_blocks(self):
-        basedir = "storage/LeaseCrawler/no_st_blocks"
-        fileutil.make_dirs(basedir)
-        ep = ExpirationPolicy(enabled=True, mode="age", override_lease_duration=-1000)
-        server = No_ST_BLOCKS_StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
-        ss = server.get_accountant().get_anonymous_account()
-
-        # a negative override_lease_duration means the "configured-"
-        # space-recovered counts will be non-zero, since all shares will have
-        # expired by then
-
-        # make it start sooner than usual.
-        lc = server.get_accounting_crawler()
-        lc.slow_start = 0
-
-        self.make_shares(ss)
-        server.setServiceParent(self.s)
-        def _wait():
-            return bool(lc.get_state()["last-cycle-finished"] is not None)
-        d = self.poll(_wait)
-
-        def _check(ignored):
-            s = lc.get_state()
-            last = s["history"][0]
-            rec = last["space-recovered"]
-            self.failUnlessEqual(rec["configured-buckets"], 4)
-            self.failUnlessEqual(rec["configured-shares"], 4)
         d.addCallback(_check)
         return d
 
