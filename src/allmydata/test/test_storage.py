@@ -3053,7 +3053,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         self.cancel_secrets = [cs0, cs1, cs1a, cs2, cs3, cs3a]
 
     def test_basic(self):
-        basedir = "storage/LeaseCrawler/basic"
+        basedir = "storage/AccountingCrawler/basic"
         fileutil.make_dirs(basedir)
         server = InstrumentedStorageServer(basedir, "\x00" * 20)
         ss = server.get_accountant().get_anonymous_account()
@@ -3194,7 +3194,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         return d
 
     def test_expire_age(self):
-        basedir = "storage/LeaseCrawler/expire_age"
+        basedir = "storage/AccountingCrawler/expire_age"
         fileutil.make_dirs(basedir)
         # setting expiration_time to 2000 means that any lease which is more
         # than 2000s old will be expired.
@@ -3319,7 +3319,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         return d
 
     def test_expire_cutoff_date(self):
-        basedir = "storage/LeaseCrawler/expire_cutoff_date"
+        basedir = "storage/AccountingCrawler/expire_cutoff_date"
         fileutil.make_dirs(basedir)
         # setting cutoff-date to 2000 seconds ago means that any lease which
         # is more than 2000s old will be expired.
@@ -3449,7 +3449,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         return d
 
     def test_only_immutable(self):
-        basedir = "storage/LeaseCrawler/only_immutable"
+        basedir = "storage/AccountingCrawler/only_immutable"
         fileutil.make_dirs(basedir)
         now = time.time()
         then = int(now - 2000)
@@ -3505,7 +3505,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         return d
 
     def test_only_mutable(self):
-        basedir = "storage/LeaseCrawler/only_mutable"
+        basedir = "storage/AccountingCrawler/only_mutable"
         fileutil.make_dirs(basedir)
         now = time.time()
         then = int(now - 2000)
@@ -3585,7 +3585,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         self.failUnlessEqual(p("2009-03-18"), 1237334400)
 
     def test_limited_history(self):
-        basedir = "storage/LeaseCrawler/limited_history"
+        basedir = "storage/AccountingCrawler/limited_history"
         fileutil.make_dirs(basedir)
         server = StorageServer(basedir, "\x00" * 20)
         ss = server.get_accountant().get_anonymous_account()
@@ -3619,7 +3619,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         return d
 
     def test_unpredictable_future(self):
-        basedir = "storage/LeaseCrawler/unpredictable_future"
+        basedir = "storage/AccountingCrawler/unpredictable_future"
         fileutil.make_dirs(basedir)
         server = StorageServer(basedir, "\x00" * 20)
         ss = server.get_accountant().get_anonymous_account()
@@ -3670,7 +3670,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
             UnknownMutableContainerVersionError,
             UnknownImmutableContainerVersionError,
             ]
-        basedir = "storage/LeaseCrawler/share_corruption"
+        basedir = "storage/AccountingCrawler/share_corruption"
         fileutil.make_dirs(basedir)
         server = InstrumentedStorageServer(basedir, "\x00" * 20)
         ss = server.get_accountant().get_anonymous_account()
