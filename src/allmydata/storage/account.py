@@ -200,6 +200,18 @@ class Account(Referenceable):
                 "created": created,
                 }
 
+    def get_stats(self):
+        return self.server.get_stats()
+
+    def get_accounting_crawler(self):
+        return self.server.get_accounting_crawler()
+
+    def get_expiration_policy(self):
+        return self.server.get_expiration_policy()
+
+    def get_bucket_counter(self):
+        return self.server.get_bucket_counter()
+
     # used by tests
 
     def _get_sharedir(self):

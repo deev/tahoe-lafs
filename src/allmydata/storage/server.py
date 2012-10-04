@@ -102,6 +102,12 @@ class StorageServer(service.MultiService):
     def get_expiration_policy(self):
         return self.accountant.get_accounting_crawler().get_expiration_policy()
 
+    def get_bucket_counter(self):
+        return self.bucket_counter
+
+    def get_nodeid(self):
+        return self.my_nodeid
+
     def __repr__(self):
         return "<StorageServer %s>" % (idlib.shortnodeid_b2a(self.my_nodeid),)
 
