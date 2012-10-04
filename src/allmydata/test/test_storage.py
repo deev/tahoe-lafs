@@ -2874,7 +2874,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
         s = remove_tags(html)
         self.failUnlessIn("Accepting new shares: Yes", s)
         self.failUnlessIn("Reserved space: - 0 B (0)", s)
-        self.failUnlessIn("Total buckets: Not computed yet", s)
+        self.failUnlessIn("Total sharesets: Not computed yet", s)
         self.failUnlessIn("Next crawl in", s)
 
         def _after_first_prefix(prefix):
@@ -2902,7 +2902,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
         def _after_yield(ign):
             html = w.renderSynchronously()
             s = remove_tags(html)
-            self.failUnlessIn("Total buckets: 0 (the number of", s)
+            self.failUnlessIn("Total sharesets: 0 (the number of", s)
             self.failUnless("Next crawl in 59 minutes" in s or "Next crawl in 60 minutes" in s, s)
         d.addCallback(_after_yield)
         return d
@@ -3130,9 +3130,9 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         def _check_html_in_cycle(html):
             s = remove_tags(html)
             self.failUnlessIn("So far, this cycle has examined "
-                              "1 shares in 1 buckets (0 mutable / 1 immutable) ", s)
+                              "1 shares in 1 sharesets (0 mutable / 1 immutable) ", s)
             self.failUnlessIn("and has recovered: "
-                              "0 shares, 0 buckets (0 mutable / 0 immutable), "
+                              "0 shares, 0 sharesets (0 mutable / 0 immutable), "
                               "0 B (0 B / 0 B)", s)
         d.addCallback(_check_html_in_cycle)
 
@@ -3261,16 +3261,16 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
         d.addCallback(lambda ign: self.render1(webstatus))
         def _check_html_in_cycle(html):
             s = remove_tags(html)
-            # the first bucket encountered gets deleted, and its prefix
+            # the first shareset encountered gets deleted, and its prefix
             # happens to be about 1/5th of the way through the ring, so the
             # predictor thinks we'll have 5 shares and that we'll delete them
             # all. This part of the test depends upon the SIs landing right
             # where they do now.
             self.failUnlessIn("The remainder of this cycle is expected to "
-                              "recover: 4 shares, 4 buckets", s)
+                              "recover: 4 shares, 4 sharesets", s)
             self.failUnlessIn("The whole cycle is expected to examine "
-                              "5 shares in 5 buckets and to recover: "
-                              "5 shares, 5 buckets", s)
+                              "5 shares in 5 sharesets and to recover: "
+                              "5 shares, 5 sharesets", s)
         d.addCallback(_check_html_in_cycle)
 
         # wait for the crawler to finish the first cycle. Two shares should
@@ -3314,7 +3314,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
             s = remove_tags(html)
             self.failUnlessIn("Expiration Enabled: expired leases will be removed", s)
             self.failUnlessIn("Leases created or last renewed more than 33 minutes ago will be considered expired.", s)
-            self.failUnlessIn(" recovered: 2 shares, 2 buckets (1 mutable / 1 immutable), ", s)
+            self.failUnlessIn(" recovered: 2 shares, 2 sharesets (1 mutable / 1 immutable), ", s)
         d.addCallback(_check_html)
         return d
 
@@ -3396,10 +3396,10 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
             # all. This part of the test depends upon the SIs landing right
             # where they do now.
             self.failUnlessIn("The remainder of this cycle is expected to "
-                              "recover: 4 shares, 4 buckets", s)
+                              "recover: 4 shares, 4 sharesets", s)
             self.failUnlessIn("The whole cycle is expected to examine "
-                              "5 shares in 5 buckets and to recover: "
-                              "5 shares, 5 buckets", s)
+                              "5 shares in 5 sharesets and to recover: "
+                              "5 shares, 5 sharesets", s)
         d.addCallback(_check_html_in_cycle)
 
         # wait for the crawler to finish the first cycle. Two shares should
@@ -3444,7 +3444,7 @@ class AccountingCrawler(unittest.TestCase, pollmixin.PollMixin, WebRenderingMixi
             date = time.strftime("%Y-%m-%d (%d-%b-%Y) UTC", time.gmtime(then))
             substr = "Leases created or last renewed before %s will be considered expired." % date
             self.failUnlessIn(substr, s)
-            self.failUnlessIn(" recovered: 2 shares, 2 buckets (1 mutable / 1 immutable), ", s)
+            self.failUnlessIn(" recovered: 2 shares, 2 sharesets (1 mutable / 1 immutable), ", s)
         d.addCallback(_check_html)
         return d
 
