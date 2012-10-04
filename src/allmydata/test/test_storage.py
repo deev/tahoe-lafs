@@ -15,7 +15,7 @@ from allmydata.storage.mutable import MutableShareFile
 from allmydata.storage.immutable import BucketWriter, BucketReader
 from allmydata.storage.common import DataTooLargeError, storage_index_to_dir, \
      UnknownMutableContainerVersionError, UnknownImmutableContainerVersionError
-from allmydata.storage.leasedb import AccountingCrawler
+from allmydata.storage.leasedb import AccountingCrawler, SHARETYPE_IMMUTABLE
 from allmydata.storage.expiration import ExpirationPolicy
 from allmydata.immutable.layout import WriteBucketProxy, WriteBucketProxy_v2, \
      ReadBucketProxy
@@ -1200,7 +1200,7 @@ class MutableServer(unittest.TestCase):
         s0 = MutableShareFile(os.path.join(bucket_dir, "0"))
         s0.create("nodeid", secrets(0)[0])
 
-        ss.add_share("six", 0, 0)
+        ss.add_share("six", 0, 0, SHARETYPE_IMMUTABLE)
         # adding a share does not immediately add a lease
         self.failUnlessEqual(len(ss.get_leases("six")), 0)
 

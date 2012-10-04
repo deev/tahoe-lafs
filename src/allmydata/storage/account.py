@@ -54,9 +54,9 @@ class Account(Referenceable):
     #  new shares: add_share(), add_lease(), mark_share_as_stable()
     #  changed shares: change_share_space(), add_lease()
 
-    def add_share(self, storage_index, shnum, used_space, commit=True):
-        if self.debug: print "ADD_SHARE", si_b2a(storage_index), shnum, used_space, commit
-        self._leasedb.add_new_share(storage_index, shnum, used_space)
+    def add_share(self, storage_index, shnum, used_space, sharetype, commit=True):
+        if self.debug: print "ADD_SHARE", si_b2a(storage_index), shnum, used_space, sharetype, commit
+        self._leasedb.add_new_share(storage_index, shnum, used_space, sharetype)
         if commit:
             self._leasedb.commit()
 

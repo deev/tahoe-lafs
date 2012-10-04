@@ -3,7 +3,8 @@ import os, time
 from twisted.trial import unittest
 from twisted.internet import defer
 from allmydata.util import fileutil
-from allmydata.storage.leasedb import LeaseDB, AccountingCrawler
+from allmydata.storage.leasedb import LeaseDB, AccountingCrawler, \
+    SHARETYPE_IMMUTABLE, SHARETYPE_MUTABLE
 from allmydata.storage.expiration import ExpirationPolicy
 
 
@@ -26,10 +27,10 @@ class DB(unittest.TestCase):
         self.failUnlessEqual(set(l2.get_all_accounts()), BASE_ACCOUNTS)
 
 
-AB=("abtnioga6deziyqd64gm65qbnu", 0)
-DE=("dekrcoczhdj5xh6zd4v62xhdnu", 1)
-FG=("fgxnicsxj4eaatcb5dayqiifsi", 19)
-ZZ=("zzs6tetijo4zamjlkfzwaihkse", 8)
+AB = ("abtnioga6deziyqd64gm65qbnu",  0, SHARETYPE_IMMUTABLE)
+DE = ("dekrcoczhdj5xh6zd4v62xhdnu",  1, SHARETYPE_MUTABLE)
+FG = ("fgxnicsxj4eaatcb5dayqiifsi", 19, SHARETYPE_IMMUTABLE)
+ZZ = ("zzs6tetijo4zamjlkfzwaihkse",  8, SHARETYPE_MUTABLE)
 
 
 class FakeStorageServer(object):
@@ -52,7 +53,7 @@ class Crawler(unittest.TestCase):
         return (self.leasedb, self.crawler)
 
     def add_external_share(self, shareid):
-        (si_s, shnum) = shareid
+        (si_s, shnum, _sharetype) = shareid
         prefix = si_s[:2]
         prefixdir = os.path.join(self.sharedir, prefix)
         bucketdir = os.path.join(prefixdir, si_s)
@@ -67,16 +68,16 @@ class Crawler(unittest.TestCase):
         return sharefile
 
     def add_share(self, leasedb, shareid):
-        (si_s, shnum) = shareid
+        (si_s, shnum, sharetype) = shareid
         self.add_external_share()
         prefix = si_s[:2]
-        leasedb.add_new_share(prefix, si_s, shnum, 20)
+        leasedb.add_new_share(prefix, si_s, shnum, 20, sharetype)
         OWNER=3 ; EXPIRETIME=time.time() + 30*24*60*60
         leasedb.add_or_renew_leases(si_s, shnum, OWNER, EXPIRETIME)
         leasedb.commit()
 
     def delete_external_share(self, shareid):
-        (si_s, shnum) = shareid
+        (si_s, shnum, _sharetype) = shareid
         prefix = si_s[:2]
         prefixdir = os.path.join(self.sharedir, prefix)
         bucketdir = os.path.join(prefixdir, si_s)
@@ -89,7 +90,7 @@ class Crawler(unittest.TestCase):
             pass
 
     def have_sharefile(self, shareid):
-        (si_s, shnum) = shareid
+        (si_s, shnum, _sharetype) = shareid
         prefix = si_s[:2]
         prefixdir = os.path.join(self.sharedir, prefix)
         bucketdir = os.path.join(prefixdir, si_s)
@@ -97,7 +98,7 @@ class Crawler(unittest.TestCase):
         return os.path.exists(sharefile)
 
     def expire_share(self, shareid):
-        (si_s, shnum) = shareid
+        (si_s, shnum, _sharetype) = shareid
         # accelerated expiration of all leases for this share
         c = self.leasedb._cursor
         c.execute("UPDATE `leases` SET `expiration_time`=0"
@@ -121,22 +122,22 @@ class Crawler(unittest.TestCase):
         c = self.leasedb._cursor
         c = c.execute("SELECT `storage_index`, `shnum` FROM `leases`"
                       " WHERE `account_id` = 1")
-        have_starter = set([list(row) for row in c.fetchall()])
+        have_starter = set([tuple(row) for row in c.fetchall()])
         c = c.execute("SELECT `storage_index`, `shnum` FROM `leases`")
-        #have_leases = set([list(row) for row in c.fetchall()])
+        #have_leases = set([tuple(row) for row in c.fetchall()])
         c = c.execute("SELECT `storage_index`, `shnum` FROM `leases`"
                       " WHERE `account_id` != 1")
-        have_non_starter = set([list(row) for row in c.fetchall()])
+        have_non_starter = set([tuple(row) for row in c.fetchall()])
         have_only_starter = have_starter - have_non_starter
         live = have_non_starter
-        garbage = set(self.leasedb.get_unleased_shares())
+        garbage = set([(row[0], row[1]) for row in self.leasedb.get_unleased_shares()])
         return (have_only_starter, live, garbage)
 
     def check_shares(self, starter=set(), live=set(), garbage=set()):
-        got_starter,got_live,got_garbage = self.count_shares()
-        self.failUnlessEqual(got_starter, starter)
-        self.failUnlessEqual(got_live, live)
-        self.failUnlessEqual(got_garbage, garbage)
+        got_starter, got_live, got_garbage = self.count_shares()
+        self.failUnlessEqual(got_starter,  set([(row[0], row[1]) for row in starter]))
+        self.failUnlessEqual(got_live,     set([(row[0], row[1]) for row in live]))
+        self.failUnlessEqual(got_garbage,  set([(row[0], row[1]) for row in garbage]))
 
     def test_shares(self):
         # make sure the crawler handles shares being added and removed

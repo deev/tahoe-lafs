@@ -10,6 +10,8 @@ from allmydata.util.fileutil import get_used_space
 from allmydata.util.assertutil import precondition
 from allmydata.storage.common import UnknownImmutableContainerVersionError, \
      DataTooLargeError
+from allmydata.storage.leasedb import SHARETYPE_IMMUTABLE
+
 
 # each share file (in storage/shares/$SI/$SHNUM) contains lease information
 # and share data. The share data is accessed by RIBucketWriter.write and
@@ -129,7 +131,7 @@ class BucketWriter(Referenceable):
         self.closed = False
         self.throw_out_all_data = False
         self._sharefile = ShareFile(incominghome, create=True, max_size=max_size)
-        self._account.add_share(self._storage_index, self._shnum, max_size)
+        self._account.add_share(self._storage_index, self._shnum, max_size, SHARETYPE_IMMUTABLE)
 
     def allocated_size(self):
         return self._max_size

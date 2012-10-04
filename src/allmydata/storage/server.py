@@ -17,6 +17,7 @@ from allmydata.storage.immutable import ShareFile, BucketWriter, BucketReader
 from allmydata.storage.crawler import BucketCountingCrawler
 from allmydata.storage.accountant import Accountant
 from allmydata.storage.expiration import ExpirationPolicy
+from allmydata.storage.leasedb import SHARETYPE_MUTABLE
 
 
 # storage/
@@ -431,7 +432,7 @@ class StorageServer(service.MultiService):
                         shares[sharenum] = share
                         shares[sharenum].writev(datav, new_length)
                         account.add_share(storage_index, sharenum,
-                                          shares[sharenum].get_used_space())
+                                          shares[sharenum].get_used_space(), SHARETYPE_MUTABLE)
                     else:
                         # apply the write vector and update the lease
                         shares[sharenum].writev(datav, new_length)

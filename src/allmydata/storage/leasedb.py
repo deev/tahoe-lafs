@@ -63,9 +63,19 @@ def int_or_none(s):
     return int(s)
 
 
+SHARETYPE_IMMUTABLE  = 0
+SHARETYPE_MUTABLE    = 1
+SHARETYPE_CORRUPTED  = 2
+SHARETYPE_UNKNOWN    = 3
+
+SHARETYPES = { SHARETYPE_IMMUTABLE: 'immutable',
+               SHARETYPE_MUTABLE:   'mutable',
+               SHARETYPE_CORRUPTED: 'corrupted',
+               SHARETYPE_UNKNOWN:   'unknown' }
+
 STATE_COMING = 0
 STATE_STABLE = 1
-STATE_GOING = 2
+STATE_GOING  = 2
 
 
 LEASE_SCHEMA_V1 = """
@@ -80,7 +90,8 @@ CREATE TABLE `shares`
  `shnum` INTEGER not null,
  `prefix` VARCHAR(2) not null,
  `used_space` INTEGER not null,
- `state` INTEGER not null, -- 0=coming, 1=stable, 2=going
+ `sharetype` INTEGER not null,  -- SHARETYPE_*
+ `state` INTEGER not null, -- STATE_*
  PRIMARY KEY (`storage_index`, `shnum`)
 );
 
@@ -154,24 +165,25 @@ class LeaseDB:
 
     def get_shares_for_prefix(self, prefix):
         """
-        Returns a set of (si_s, shnum) pairs.
+        Returns a dict mapping (si_s, shnum) pairs to (used_space, sharetype) pairs.
         """
-        self._cursor.execute("SELECT `storage_index`,`shnum`"
+        self._cursor.execute("SELECT `storage_index`,`shnum`, `used_space`, `sharetype`"
                              " FROM `shares`"
                              " WHERE `prefix` == ?",
                              (prefix,))
-        db_shares = set([(str(si_s), int(shnum)) for (si_s, shnum) in self._cursor.fetchall()])
+        db_shares = dict([((str(si_s), int(shnum)), (int(used_space), int(sharetype)))
+                          for (si_s, shnum, used_space, sharetype) in self._cursor.fetchall()])
         return db_shares
 
-    def add_new_share(self, storage_index, shnum, used_space):
+    def add_new_share(self, storage_index, shnum, used_space, sharetype):
         si_s = si_b2a(storage_index)
         prefix = si_s[:2]
-        if self.debug: print "ADD_NEW_SHARE", prefix, si_s, shnum, used_space
+        if self.debug: print "ADD_NEW_SHARE", prefix, si_s, shnum, used_space, sharetype
         self._dirty = True
         try:
             self._cursor.execute("INSERT INTO `shares`"
-                                 " VALUES (?,?,?,?,?)",
-                                 (si_s, shnum, prefix, used_space, STATE_COMING))
+                                 " VALUES (?,?,?,?,?,?)",
+                                 (si_s, shnum, prefix, used_space, sharetype, STATE_COMING))
         except dbutil.IntegrityError:
             # XXX: when test_repairer.Repairer.test_repair_from_deletion_of_1
             # runs, it deletes the share from disk, then the repairer replaces it
@@ -301,13 +313,23 @@ class LeaseDB:
             return LeaseInfo(storage_index, int(shnum), int(account_id), float(renewal_time), float(expiration_time))
         return map(_to_LeaseInfo, rows)
 
+    def get_lease_ages(self, storage_index, shnum, now):
+        si_s = si_b2a(storage_index)
+        self._cursor.execute("SELECT `renewal_time` FROM `leases`"
+                             " WHERE `storage_index`=? AND `shnum`=?",
+                             (si_s, shnum))
+        rows = self._cursor.fetchall()
+        def _to_age(row):
+            return now - float(row[0])
+        return map(_to_age, rows)
+
     def get_unleased_shares(self, limit=None):
         # This would be simpler, but it doesn't work because 'NOT IN' doesn't support multiple columns.
         #query = ("SELECT `storage_index`, `shnum` FROM `shares`"
         #         " WHERE (`storage_index`, `shnum`) NOT IN (SELECT DISTINCT `storage_index`, `shnum` FROM `leases`)")
 
         # This "negative join" should be equivalent.
-        query = ("SELECT DISTINCT s.storage_index, s.shnum FROM `shares` s LEFT JOIN `leases` l"
+        query = ("SELECT DISTINCT s.storage_index, s.shnum, s.sharetype FROM `shares` s LEFT JOIN `leases` l"
                  " ON (s.storage_index = l.storage_index AND s.shnum = l.shnum)"
                  " WHERE l.storage_index IS NULL")
 
@@ -381,7 +403,7 @@ class AccountingCrawler(ShareCrawler):
         self._leasedb = leasedb
 
     def process_prefixdir(self, cycle, prefix, prefixdir, buckets, start_slice):
-        # assume that we can list every bucketdir in this prefix quickly.
+        # assume that we can list every prefixdir in this prefix quickly.
         # Otherwise we have to retain more state between timeslices.
 
         # we define "shareid" as (SI string, shnum)
@@ -397,19 +419,53 @@ class AccountingCrawler(ShareCrawler):
                 disk_shares.add(shareid)
 
         # now check the database for everything in this prefix
-        db_shares = self._leasedb.get_shares_for_prefix(prefix)
+        db_sharemap = self._leasedb.get_shares_for_prefix(prefix)
+        db_shares = set(db_sharemap)
+        print prefix, db_sharemap
+
+        rec = self.state["cycle-to-date"]["space-recovered"]
+        sharesets = [set() for st in xrange(len(SHARETYPES))]
+
+        # The lease crawler used to calculate the lease age histogram while
+        # crawling shares, and tests currently rely on that, but it would be
+        # more efficient to maintain the histogram as leases are added,
+        # updated, and removed.
+        for key, value in db_sharemap.iteritems():
+            (si_s, shnum) = key
+            (used_space, sharetype) = value
+
+            sharesets[sharetype].add(si_s)
+
+            for age in self._leasedb.get_lease_ages(si_a2b(si_s), shnum, start_slice):
+                self.add_lease_age_to_histogram(age)
+
+            self.increment(rec, "examined-shares", 1)
+            self.increment(rec, "examined-sharebytes", used_space)
+            self.increment(rec, "examined-shares-" + SHARETYPES[sharetype], 1)
+            self.increment(rec, "examined-sharebytes-" + SHARETYPES[sharetype], used_space)
+
+        self.increment(rec, "examined-buckets", sum([len(s) for s in sharesets]))
+        for st in SHARETYPES:
+            self.increment(rec, "examined-buckets-" + SHARETYPES[st], len(sharesets[st]))
 
         # add new shares to the DB
-        new_shares = (disk_shares - db_shares)
+        new_shares = disk_shares - db_shares
         for (si_s, shnum) in new_shares:
             fp = FilePath(prefixdir).child(si_s).child(str(shnum))
             used_space = get_used_space(fp)
-            self._leasedb.add_new_share(si_a2b(si_s), shnum, used_space)
-            self._leasedb.add_starter_lease(si_s, shnum)
+            # FIXME
+            sharetype = SHARETYPE_UNKNOWN
+            try:
+                self._leasedb.add_new_share(si_a2b(si_s), shnum, used_space, sharetype)
+            except ShareAlreadyInDatabaseError:
+                # XXX log and ignore
+                raise
+            else:
+                self._leasedb.add_starter_lease(si_s, shnum)
 
         # remove deleted shares
-        deleted_shares = (db_shares - disk_shares)
-        for (si_s, shnum) in deleted_shares:
+        deleted_shares = db_shares - disk_shares
+        for (si_s, shnum, sharetype) in deleted_shares:
             self._leasedb.remove_deleted_share(si_a2b(si_s), shnum)
 
         self._leasedb.commit()
@@ -431,7 +487,22 @@ class AccountingCrawler(ShareCrawler):
         # complete.
         return self.state["last-cycle-finished"] is None
 
+    def increment(self, d, k, delta=1):
+        if k not in d:
+            d[k] = 0
+        d[k] += delta
+
+    def add_lease_age_to_histogram(self, age):
+        print "ADD_LEASE_AGE", age
+        bin_interval = 24*60*60
+        bin_number = int(age/bin_interval)
+        bin_start = bin_number * bin_interval
+        bin_end = bin_start + bin_interval
+        k = (bin_start, bin_end)
+        self.increment(self.state["cycle-to-date"]["lease-age-histogram"], k, 1)
+
     def convert_lease_age_histogram(self, lah):
+        print "lah =", lah
         # convert { (minage,maxage) : count } into [ (minage,maxage,count) ]
         # since the former is not JSON-safe (JSON dictionaries must have
         # string keys).
@@ -463,17 +534,18 @@ class AccountingCrawler(ShareCrawler):
 
     def create_empty_recovered_dict(self):
         recovered = {}
-        for a in ("actual", "original", "configured", "examined"):
-            for b in ("buckets", "shares", "sharebytes", "diskbytes"):
-                recovered[a+"-"+b] = 0
-                recovered[a+"-"+b+"-mutable"] = 0
-                recovered[a+"-"+b+"-immutable"] = 0
+        for a in ("actual", "examined"):
+            for b in ("buckets", "shares", "diskbytes"):
+                recovered["%s-%s" % (a, b)] = 0
+                for st in SHARETYPES:
+                    recovered["%s-%s-%s" % (a, b, SHARETYPES[st])] = 0
         return recovered
 
     def started_cycle(self, cycle):
         self.state["cycle-to-date"] = self.create_empty_cycle_dict()
 
     def finished_cycle(self, cycle):
+        print "FINISHED_CYCLE!"
         # add to our history state, prune old history
         h = {}
 
@@ -542,29 +614,22 @@ class AccountingCrawler(ShareCrawler):
          The 'space-recovered' structure is a dictionary with the following
          keys:
           # 'examined' is what was looked at
-          examined-buckets, examined-buckets-mutable, examined-buckets-immutable
-          examined-shares, -mutable, -immutable
-          examined-sharebytes, -mutable, -immutable
-          examined-diskbytes, -mutable, -immutable
+          examined-buckets,     examined-buckets-$SHARETYPE
+          examined-shares,      examined-shares-$SHARETYPE
+          examined-diskbytes,   examined-diskbytes-$SHARETYPE
 
-          # 'actual' is what was actually deleted
-          actual-buckets, -mutable, -immutable
-          actual-shares, -mutable, -immutable
-          actual-sharebytes, -mutable, -immutable
-          actual-diskbytes, -mutable, -immutable
+          # 'actual' is what was deleted
+          actual-buckets,       actual-buckets-$SHARETYPE
+          actual-shares,        actual-shares-$SHARETYPE
+          actual-diskbytes,     actual-diskbytes-$SHARETYPE
 
-          # would have been deleted, if the original lease timer was used
-          original-buckets, -mutable, -immutable
-          original-shares, -mutable, -immutable
-          original-sharebytes, -mutable, -immutable
-          original-diskbytes, -mutable, -immutable
+        Note that the preferred terminology has changed since these keys
+        were defined; "buckets" refers to what are now called sharesets,
+        and "diskbytes" refers to bytes of used space on the storage backend,
+        which is not necessarily the disk backend.
 
-          # would have been deleted, if our configured max_age was used
-          configured-buckets, -mutable, -immutable
-          configured-shares, -mutable, -immutable
-          configured-sharebytes, -mutable, -immutable
-          configured-diskbytes, -mutable, -immutable
-
+        The 'original-*' and 'configured-*' keys that were populated in
+        pre-leasedb versions are no longer supported.
         """
         progress = self.get_progress()
 
@@ -592,17 +657,23 @@ class AccountingCrawler(ShareCrawler):
         if progress["cycle-complete-percentage"] > 0.0:
             pc = progress["cycle-complete-percentage"] / 100.0
             m = (1-pc)/pc
-            for a in ("actual", "original", "configured", "examined"):
-                for b in ("buckets", "shares", "sharebytes", "diskbytes"):
-                    for c in ("", "-mutable", "-immutable"):
-                        k = a+"-"+b+c
+            for a in ("actual", "examined"):
+                for b in ("buckets", "shares", "diskbytes"):
+                    k = "%s-%s" % (a, b)
+                    remaining_sr[k] = m * so_far_sr[k]
+                    cycle_sr[k] = so_far_sr[k] + remaining_sr[k]
+                    for st in SHARETYPES:
+                        k = "%s-%s-%s" % (a, b, SHARETYPES[st])
                         remaining_sr[k] = m * so_far_sr[k]
                         cycle_sr[k] = so_far_sr[k] + remaining_sr[k]
         else:
-            for a in ("actual", "original", "configured", "examined"):
-                for b in ("buckets", "shares", "sharebytes", "diskbytes"):
-                    for c in ("", "-mutable", "-immutable"):
-                        k = a+"-"+b+c
+            for a in ("actual", "examined"):
+                for b in ("buckets", "shares", "diskbytes"):
+                    k = "%s-%s" % (a, b)
+                    remaining_sr[k] = None
+                    cycle_sr[k] = None
+                    for st in SHARETYPES:
+                        k = "%s-%s-%s" % (a, b, SHARETYPES[st])
                         remaining_sr[k] = None
                         cycle_sr[k] = None
 
