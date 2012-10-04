@@ -29,8 +29,9 @@ class StorageStatus(rend.Page):
     def render_JSON(self, req):
         req.setHeader("content-type", "text/plain")
         accounting_crawler = self.storage.get_accounting_crawler()
+        bucket_counter = self.storage.get_bucket_counter()
         d = {"stats": self.storage.get_stats(),
-             "bucket-counter": self.storage.bucket_counter.get_state(),
+             "bucket-counter": bucket_counter.get_state(),
              "lease-checker": accounting_crawler.get_state(),
              "lease-checker-progress": accounting_crawler.get_progress(),
              }
@@ -39,7 +40,7 @@ class StorageStatus(rend.Page):
     def data_nickname(self, ctx, storage):
         return self.nickname
     def data_nodeid(self, ctx, storage):
-        return idlib.nodeid_b2a(self.storage.my_nodeid)
+        return idlib.nodeid_b2a(self.storage.server.get_nodeid())
 
     def render_storage_running(self, ctx, storage):
         if storage:
@@ -94,14 +95,14 @@ class StorageStatus(rend.Page):
         return d
 
     def data_last_complete_bucket_count(self, ctx, data):
-        s = self.storage.bucket_counter.get_state()
+        s = self.storage.get_bucket_counter().get_state()
         count = s.get("last-complete-bucket-count")
         if count is None:
             return "Not computed yet"
         return count
 
     def render_count_crawler_status(self, ctx, storage):
-        p = self.storage.bucket_counter.get_progress()
+        p = self.storage.get_bucket_counter().get_progress()
         return ctx.tag[self.format_crawler_progress(p)]
 
     def format_crawler_progress(self, p):
