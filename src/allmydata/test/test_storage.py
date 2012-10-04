@@ -4,10 +4,11 @@ import mock
 
 from twisted.trial import unittest
 
-from twisted.internet import defer
+from twisted.internet import defer, reactor
 from twisted.application import service
 from foolscap.api import fireEventually
 import itertools
+
 from allmydata import interfaces
 from allmydata.util import fileutil, hashutil, base32, pollmixin, time_format
 from allmydata.storage.server import StorageServer
@@ -3266,9 +3267,7 @@ class AccountingCrawlerTest(unittest.TestCase, pollmixin.PollMixin, CrawlerTestM
         def _after_first_bucket(ignored):
             p = lc.get_progress()
             if not p["cycle-in-progress"]:
-                d2 = fireEventually()
-                d2.addCallback(_after_first_bucket)
-                return d2
+                return reactor.callLater(0.2, _after_first_bucket)
         d.addCallback(_after_first_bucket)
         d.addCallback(lambda ign: self.render1(webstatus))
         def _check_html_in_cycle(html):
@@ -3395,9 +3394,7 @@ class AccountingCrawlerTest(unittest.TestCase, pollmixin.PollMixin, CrawlerTestM
         def _after_first_bucket(ignored):
             p = lc.get_progress()
             if not p["cycle-in-progress"]:
-                d2 = fireEventually()
-                d2.addCallback(_after_first_bucket)
-                return d2
+                return reactor.callLater(0.2, _after_first_bucket)
         d.addCallback(_after_first_bucket)
         d.addCallback(lambda ign: self.render1(webstatus))
         def _check_html_in_cycle(html):
@@ -3657,9 +3654,7 @@ class AccountingCrawlerTest(unittest.TestCase, pollmixin.PollMixin, CrawlerTestM
             # first bucket).
             s = lc.get_state()
             if "cycle-to-date" not in s:
-                d2 = fireEventually()
-                d2.addCallback(_check)
-                return d2
+                return reactor.callLater(0.2, _check)
             self.failUnlessIn("cycle-to-date", s)
             self.failUnlessIn("estimated-remaining-cycle", s)
             self.failUnlessIn("estimated-current-cycle", s)
@@ -3727,9 +3722,7 @@ class AccountingCrawlerTest(unittest.TestCase, pollmixin.PollMixin, CrawlerTestM
         def _after_first_bucket(ignored):
             s = lc.get_state()
             if "cycle-to-date" not in s:
-                d2 = fireEventually()
-                d2.addCallback(_after_first_bucket)
-                return d2
+                return reactor.callLater(0.2, _after_first_bucket)
             so_far = s["cycle-to-date"]
             rec = so_far["space-recovered"]
             self.failUnlessEqual(rec["examined-buckets"], 1)
