@@ -89,9 +89,10 @@ CREATE TABLE `shares`
  `storage_index` VARCHAR(26) not null,
  `shnum` INTEGER not null,
  `prefix` VARCHAR(2) not null,
+ `backend_key` VARCHAR,         -- not used by current backends; NULL means '$prefix/$storage_index/$shnum'
  `used_space` INTEGER not null,
  `sharetype` INTEGER not null,  -- SHARETYPE_*
- `state` INTEGER not null, -- STATE_*
+ `state` INTEGER not null,      -- STATE_*
  PRIMARY KEY (`storage_index`, `shnum`)
 );
 
@@ -182,8 +183,8 @@ class LeaseDB:
         self._dirty = True
         try:
             self._cursor.execute("INSERT INTO `shares`"
-                                 " VALUES (?,?,?,?,?,?)",
-                                 (si_s, shnum, prefix, used_space, sharetype, STATE_COMING))
+                                 " VALUES (?,?,?,?,?,?,?)",
+                                 (si_s, shnum, prefix, None, used_space, sharetype, STATE_COMING))
         except dbutil.IntegrityError:
             # XXX: when test_repairer.Repairer.test_repair_from_deletion_of_1
             # runs, it deletes the share from disk, then the repairer replaces it
@@ -205,16 +206,16 @@ class LeaseDB:
                              (None, si_s, shnum, self.STARTER_LEASE_ACCOUNTID,
                               int(renewal_time), int(renewal_time + self.STARTER_LEASE_DURATION)))
 
-    def mark_share_as_stable(self, storage_index, shnum, used_space):
+    def mark_share_as_stable(self, storage_index, shnum, used_space, backend_key=None):
         """
         Call this method after adding a share to backend storage.
         """
         si_s = si_b2a(storage_index)
         if self.debug: print "MARK_SHARE_AS_STABLE", si_s, shnum, used_space
         self._dirty = True
-        self._cursor.execute("UPDATE `shares` SET `state`=?, `used_space`=?"
+        self._cursor.execute("UPDATE `shares` SET `state`=?, `used_space`=?, `backend_key`=?"
                              " WHERE `storage_index`=? AND `shnum`=? AND `state`!=?",
-                             (STATE_STABLE, used_space, si_s, shnum, STATE_GOING))
+                             (STATE_STABLE, used_space, backend_key, si_s, shnum, STATE_GOING))
         if self._cursor.rowcount < 1:
             raise NonExistentShareError(si_s, shnum)
 
