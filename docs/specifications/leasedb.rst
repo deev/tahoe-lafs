@@ -10,9 +10,9 @@ the new lease database (leasedb) to be added in Tahoe-LAFS v1.11.0.
 Introduction
 ------------
 
-A "lease" is a request by an account that a share not be deleted for a
-duration. The storage server stores leases in order to know which shares to
-spare from garbage collection.
+A "lease" is a request by an account that a share not be deleted before a
+specified time. Each storage server stores leases in order to know which
+shares to spare from garbage collection.
 
 Motivation
 ----------
@@ -21,8 +21,9 @@ Before Tahoe-LAFS v1.11.0, leases were stored in the storage server's share
 container files. This had several disadvantages:
 
 - Updating a lease required modifying a share container file (even for
-  immutable shares). This complicated the implementation of share classes and
-  led to a security bug (ticket `#1528`_).
+  immutable shares). This complicated the implementation of share classes.
+  The mixing of share contents and lease data in share files also led to a
+  security bug (ticket `#1528`_).
 
 - When only the disk backend was supported, it was possible to read and
   update leases synchronously because the share files were stored locally
@@ -37,10 +38,14 @@ cancelling leases (based on shared secrets derived from secure hash
 functions) was complex, and the cancellation part was never used.
 
 The leasedb solves the first two problems by storing the lease information in
-a local database instead of in the share container files. (The share data
-itself is still held in the share container file.) At the same time as
-implementing leasedb, we devised a simpler protocol (using public key digital
-signatures) for allocating and cancelling leases.
+a local database instead of in the share container files. The share data
+itself is still held in the share container file.
+
+At the same time as implementing leasedb, we devised a simpler protocol for
+allocating and cancelling leases: a client can use a public key digital
+signature to authenticate access to a foolscap object representing the
+authority of an account. This protocol is not yet implemented; at the time
+of writing, only an "anonymous" account is supported.
 
 The leasedb also provides an efficient way to get summarized information,
 such as total space usage of shares leased by an account, for accounting
@@ -57,10 +62,9 @@ remote from the server (for example, cloud storage).
 
 Writing to the persistent store objects is in general not an atomic
 operation. So the leasedb also keeps track of which shares are in an
-inconsistent state because they have been partly written. XXX I don't think
-this is true ‽ I hope it isn't — I currently think that I want that atomicity
-to be implemented solely using the persistent storage (so that if the local
-store fails we still have atomicity).
+inconsistent state because they have been partly written. (This may
+change in future when we implement a protocol to improve atomicity of
+updates to mutable shares.)
 
 Leases are no longer stored in shares. The same share format is used as
 before, but the lease slots are ignored, and are cleared when rewriting a
@@ -250,10 +254,11 @@ Unresolved design issues
 ------------------------
 
 - What happens if a write to storage objects for a new share fails
-  permanently?  If we delete the share entry, any storage objects that were
-  written for that share will be deleted by the accounting crawler when it
-  next gets to them.  Is this sufficient, or should we attempt to delete
-  those objects immediately? If the latter, do we need a direct
+  permanently?  If we delete the share entry, then the accounting crawler
+  will eventually get to those storage objects and see that their lengths
+  are inconsistent with the length in the container header. This will cause
+  the share to be treated as corrupted. Should we instead attempt to
+  delete those objects immediately? If so, do we need a direct
   **STATE_COMING** → **STATE_GOING** transition to handle this case?
 
 - What happens if only some storage objects for a share disappear
