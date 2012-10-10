@@ -38,10 +38,14 @@ cancelling leases (based on shared secrets derived from secure hash
 functions) was complex, and the cancellation part was never used.
 
 The leasedb solves the first two problems by storing the lease information in
-a local database instead of in the share container files. (The share data
-itself is still held in the share container file.) At the same time as
-implementing leasedb, we devised a simpler protocol (using public key digital
-signatures) for allocating and cancelling leases.
+a local database instead of in the share container files. The share data
+itself is still held in the share container file.
+
+At the same time as implementing leasedb, we devised a simpler protocol for
+allocating and cancelling leases: a client can use a public key digital
+signature to authenticate access to a foolscap object representing the
+authority of an account. This protocol is not yet implemented; at the time
+of writing, only an "anonymous" account is supported.
 
 The leasedb also provides an efficient way to get summarized information,
 such as total space usage of shares leased by an account, for accounting
