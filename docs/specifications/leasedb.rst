@@ -62,10 +62,9 @@ remote from the server (for example, cloud storage).
 
 Writing to the persistent store objects is in general not an atomic
 operation. So the leasedb also keeps track of which shares are in an
-inconsistent state because they have been partly written. XXX I don't think
-this is true ‽ I hope it isn't — I currently think that I want that atomicity
-to be implemented solely using the persistent storage (so that if the local
-store fails we still have atomicity).
+inconsistent state because they have been partly written. (This may
+change in future when we implement a protocol to improve atomicity of
+updates to mutable shares.)
 
 Leases are no longer stored in shares. The same share format is used as
 before, but the lease slots are ignored, and are cleared when rewriting a
@@ -255,11 +254,12 @@ Unresolved design issues
 ------------------------
 
 - What happens if a write to storage objects for a new share fails
-  permanently?  If we delete the share entry, any storage objects that were
-  written for that share will be deleted by the AccountingCrawler when it
-  next gets to them.  Is this sufficient, or should we attempt to delete
-  those objects immediately? If the latter, do we need a direct
-  **STATE_COMING** → **STATE_GOING** transition to handle this case?
+  permanently?  If we delete the share entry, then the accounting crawler
+  will eventually get to those storage objects and see that their lengths
+  are inconsistent with the length in the container header. This will cause
+  the share to be treated as corrupted. Should we instead attempt to
+  delete those objects immediately? If so, do we need a direct
+  STATE_COMING → STATE_GOING transition to handle this case?
 
 - What happens if only some storage objects for a share disappear
   unexpectedly?  This case is similar to only some objects having been
