@@ -7,29 +7,44 @@ The target audience for this document is developers who wish to understand
 the new lease database (leasedb) to be added in Tahoe-LAFS v1.11.0.
 
 
+Introduction
+------------
+
+A "lease" is a request by an account that a share not be deleted for a
+duration. The storage server stores leases in order to know which shares to
+spare from garbage collection.
+
 Motivation
 ----------
 
-Before Tahoe-LAFS v1.11.0, leases were stored in share files. This has
-several disadvantages:
+Before Tahoe-LAFS v1.11.0, leases were stored in the storage server's share
+container files. This had several disadvantages:
 
-- Updating a lease required modifying a share file (even for immutable
-  shares). This significantly complicated the implementation of share classes
-  and led to a security bug (ticket `#1528`_).
-
-- The lease renewal and cancel functionality using individual secrets was
-  complex and not fully used.
+- Updating a lease required modifying a share container file (even for
+  immutable shares). This complicated the implementation of share classes and
+  led to a security bug (ticket `#1528`_).
 
 - When only the disk backend was supported, it was possible to read and
-  update leases synchronously because the share files were stored locally to
-  the storage server. For the cloud backend, accessing share files requires
-  an HTTP request, and so must be asynchronous. Accepting this asynchrony for
-  lease queries would be both inefficient and complex.  Moving lease
-  information out of shares and into a local database allows lease queries to
-  stay synchronous.
+  update leases synchronously because the share files were stored locally
+  to the storage server. For the cloud backend, accessing share files
+  requires an HTTP request, and so must be asynchronous. Accepting this
+  asynchrony for lease queries would be both inefficient and complex.
+  Moving lease information out of shares and into a local database allows
+  lease queries to stay synchronous.
 
-The leasedb also provides a place to store summarized information, such as
-total space usage of shares leased by an account, for accounting purposes.
+Before Tahoe-LAFS v1.11.0, the cryptographic protocol for renewing and
+cancelling leases (based on shared secrets derived from secure hash
+functions) was complex, and the cancellation part was never used.
+
+The leasedb solves the first two problems by storing the lease information in
+a local database instead of in the share container files. (The share data
+itself is still held in the share container file.) At the same time as
+implementing leasedb, we devised a simpler protocol (using public key digital
+signatures) for allocating and cancelling leases.
+
+The leasedb also provides an efficient way to get summarized information,
+such as total space usage of shares leased by an account, for accounting
+purposes.
 
 .. _`#1528`: https://tahoe-lafs.org/trac/tahoe-lafs/ticket/1528
 
@@ -37,11 +52,15 @@ total space usage of shares leased by an account, for accounting purposes.
 Design constraints
 ------------------
 
-A backend share is represented as a collection of backend objects. The
-backend storage may be remote from the storage server (for example, a cloud
-storage service). Writing to the backend objects is in general not an atomic
+A share is stored as a collection of objects. The persistent storage may be
+remote from the server (for example, cloud storage).
+
+Writing to the persistent store objects is in general not an atomic
 operation. So the leasedb also keeps track of which shares are in an
-inconsistent state because they have been partly written.
+inconsistent state because they have been partly written. XXX I don't think
+this is true ‽ I hope it isn't — I currently think that I want that atomicity
+to be implemented solely using the persistent storage (so that if the local
+store fails we still have atomicity).
 
 Leases are no longer stored in shares. The same share format is used as
 before, but the lease slots are ignored, and are cleared when rewriting a
@@ -58,14 +77,22 @@ the metadata about leases held by particular accounts has been lost).
 Accounting crawler
 ------------------
 
-The accounting crawler replaces the current lease crawler. It performs the
-following functions:
+A "crawler" is a long-running process that visits share container files at a
+slow rate, so as not to overload the server by trying to visit all share
+container files one after another immediately.
 
-- delete backend objects for unleased shares -- that is, shares that have
-  stable entries in the leasedb but no unexpired leases.
+The accounting crawler replaces the previous "lease crawler". It examines
+each share container file and compares it with the state of the leasedb, and
+may update the state of the share and/or the leasedb.
 
-- discover shares that have been manually added to backend storage, via
-  ``scp`` or some other out-of-band means.
+The accounting crawler performs the following functions:
+
+- delete the objects containing unleased shares — that is, shares that have
+  stable entries in the leasedb but no current leases (see below for the
+  definition of "stable" entries).
+
+- discover shares that have been manually added to storage, via ``scp`` or
+  some other out-of-band means.
 
 - discover shares that are present when a storage server is upgraded to
   version v1.11.0 or later from a previous version, and give them "starter
@@ -83,11 +110,11 @@ following functions:
 Accounts
 --------
 
-An account holds leases for some subset of shares stored by a server.  For
-the time being we only support two accounts: an anonymous account and a
-starter account. The starter account is used for leases on shares discovered
-by the accounting crawler; the anonymous account is used for all other
-leases.
+An account holds leases for some subset of shares stored by a server. The
+leasedb schema can handle many distinct accounts, but for the time being we
+create only two accounts: an anonymous account and a starter account. The
+starter account is used for leases on shares discovered by the accounting
+crawler; the anonymous account is used for all other leases.
 
 The leasedb has at most one lease entry per account per (storage_index,
 shnum) pair. This entry stores the times when the lease was last renewed and
@@ -120,13 +147,13 @@ NONE:
 
     Transitions into this state:
 
-    - STATE_GOING → NONE: all backend objects for the share have just been
+    - STATE_GOING → NONE: all storage objects for the share have been
       deleted.
-    - STATE_STABLE → NONE: the AccountingCrawler just noticed that all the
-      backend objects for this share disappeared unexpectedly.
+    - STATE_STABLE → NONE: the AccountingCrawler noticed that all the storage
+      objects for this share disappeared unexpectedly.
 
 STATE_COMING:
-    The backend objects are being written to, but are not confirmed to all
+    The storage objects are being written to, but are not confirmed to all
     have been written.
 
     Transitions into this state:
