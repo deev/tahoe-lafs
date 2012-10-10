@@ -14,19 +14,19 @@ Before Tahoe-LAFS v1.11.0, leases were stored in share files. This has
 several disadvantages:
 
 - Updating a lease required modifying a share file (even for immutable
-  shares). This significantly complicated the implementation of share
-  classes and led to a security bug (ticket `#1528`_).
+  shares). This significantly complicated the implementation of share classes
+  and led to a security bug (ticket `#1528`_).
 
-- The lease renewal and cancel functionality using individual secrets
-  was complex and not fully used.
+- The lease renewal and cancel functionality using individual secrets was
+  complex and not fully used.
 
 - When only the disk backend was supported, it was possible to read and
-  update leases synchronously because the share files were stored locally
-  to the storage server. For the cloud backend, accessing share files
-  requires an HTTP request, and so must be asynchronous. Accepting this
-  asynchrony for lease queries would be both inefficient and complex.
-  Moving lease information out of shares and into a local database allows
-  lease queries to stay synchronous.
+  update leases synchronously because the share files were stored locally to
+  the storage server. For the cloud backend, accessing share files requires
+  an HTTP request, and so must be asynchronous. Accepting this asynchrony for
+  lease queries would be both inefficient and complex.  Moving lease
+  information out of shares and into a local database allows lease queries to
+  stay synchronous.
 
 The leasedb also provides a place to store summarized information, such as
 total space usage of shares leased by an account, for accounting purposes.
@@ -68,35 +68,34 @@ following functions:
   ``scp`` or some other out-of-band means.
 
 - discover shares that are present when a storage server is upgraded to
-  version v1.11.0 or later from a previous version, and give them
-  "starter leases".
+  version v1.11.0 or later from a previous version, and give them "starter
+  leases".
 
 - recover from a situation where the leasedb is lost or detectably
   corrupted. This is handled in the same way as upgrading from a previous
   version.
 
-- detect shares that have unexpectedly disappeared from backend storage.
-  The disappearance of a share is logged, and its entry and leases are
-  removed from the leasedb.
+- detect shares that have unexpectedly disappeared from backend storage.  The
+  disappearance of a share is logged, and its entry and leases are removed
+  from the leasedb.
 
 
 Accounts
 --------
 
-An account holds leases for some subset of shares stored by a server.
-For the time being we only support two accounts: an anonymous account
-and a starter account. The starter account is used for leases on shares
-discovered by the accounting crawler; the anonymous account is used for
-all other leases.
+An account holds leases for some subset of shares stored by a server.  For
+the time being we only support two accounts: an anonymous account and a
+starter account. The starter account is used for leases on shares discovered
+by the accounting crawler; the anonymous account is used for all other
+leases.
 
-The leasedb has at most one lease entry per account per
-(storage_index, shnum) pair. This entry stores the times when the lease
-was last renewed and when it is set to expire (if the expiration policy
-does not force it to expire earlier), represented as Unix
-UTC-seconds-since-epoch timestamps.
+The leasedb has at most one lease entry per account per (storage_index,
+shnum) pair. This entry stores the times when the lease was last renewed and
+when it is set to expire (if the expiration policy does not force it to
+expire earlier), represented as Unix UTC-seconds-since-epoch timestamps.
 
-For more on expiration policy, see
-`docs/garbage-collection.rst <../garbage-collection.rst>`__.
+For more on expiration policy, see `docs/garbage-collection.rst
+<../garbage-collection.rst>`__.
 
 
 Share states
@@ -106,19 +105,18 @@ The diagram and descriptions below give the possible states, and transitions
 between states, for any (storage_index, shnum) pair on each server::
 
 
-       STATE_STABLE -------.
-        ^   |    |         |
-        |   v    |         v
-   STATE_COMING  |    STATE_GOING
-        ^        |         |
-        |        v         |
-        '----- NONE <------'
+  #        STATE_STABLE -------.
+  #         ^   |    |         |
+  #         |   v    |         v
+  #    STATE_COMING  |    STATE_GOING
+  #         ^        |         |
+  #         |        v         |
+  #         '----- NONE <------'
 
 
 NONE:
-    There is no entry in the ``shares`` table for this
-    (storage_index, shnum) in this server's leasedb. This is the
-    initial state.
+    There is no entry in the ``shares`` table for this (storage_index, shnum)
+    in this server's leasedb. This is the initial state.
 
     Transitions into this state:
 
@@ -144,7 +142,8 @@ STATE_STABLE:
 
     Transitions into this state:
 
-    - STATE_COMING → STATE_STABLE: all backend objects have just been written.
+    - STATE_COMING → STATE_STABLE: all backend objects have just been
+      written.
 
 STATE_GOING:
     The backend objects are being deleted.
@@ -156,9 +155,9 @@ STATE_GOING:
 
 The following constraints are needed to avoid race conditions:
 
-- While a share is being deleted (entry in STATE_GOING), we do not accept
-  any requests to recreate it. That would result in add and delete requests
-  for backend objects being sent concurrently, with undefined results.
+- While a share is being deleted (entry in STATE_GOING), we do not accept any
+  requests to recreate it. That would result in add and delete requests for
+  backend objects being sent concurrently, with undefined results.
 
 - While a share is being added or modified (entry in STATE_COMING), we treat
   it as leased.
@@ -169,18 +168,18 @@ The following constraints are needed to avoid race conditions:
 Unresolved design issues
 ------------------------
 
-- What happens if a write to backend storage for a new share fails permanently?
-  If we delete the share entry, any backend objects that were written for that
-  share will be deleted by the AccountingCrawler when it next gets to them.
-  Is this sufficient, or should we attempt to delete those objects
-  immediately? If the latter, do we need a direct STATE_COMING → STATE_GOING
-  transition to handle this case?
+- What happens if a write to backend storage for a new share fails
+  permanently?  If we delete the share entry, any backend objects that were
+  written for that share will be deleted by the AccountingCrawler when it
+  next gets to them.  Is this sufficient, or should we attempt to delete
+  those objects immediately? If the latter, do we need a direct STATE_COMING
+  → STATE_GOING transition to handle this case?
 
-- What happens if only some backend objects for a share disappear unexpectedly?
-  This case is similar to only some objects having been written when we get
-  an unrecoverable error during creation of a share, but perhaps we want to
-  treat it differently in order to preserve information about the backend
-  having lost data.
+- What happens if only some backend objects for a share disappear
+  unexpectedly?  This case is similar to only some objects having been
+  written when we get an unrecoverable error during creation of a share, but
+  perhaps we want to treat it differently in order to preserve information
+  about the backend having lost data.
 
 - Does the leasedb need to track corrupted shares?
 
