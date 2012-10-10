@@ -10,9 +10,9 @@ the new lease database (leasedb) to be added in Tahoe-LAFS v1.11.0.
 Introduction
 ------------
 
-A "lease" is a request by an account that a share not be deleted for a
-duration. The storage server stores leases in order to know which shares to
-spare from garbage collection.
+A "lease" is a request by an account that a share not be deleted before a
+specified time. Each storage server stores leases in order to know which
+shares to spare from garbage collection.
 
 Motivation
 ----------
@@ -21,8 +21,9 @@ Before Tahoe-LAFS v1.11.0, leases were stored in the storage server's share
 container files. This had several disadvantages:
 
 - Updating a lease required modifying a share container file (even for
-  immutable shares). This complicated the implementation of share classes and
-  led to a security bug (ticket `#1528`_).
+  immutable shares). This complicated the implementation of share classes.
+  The mixing of share contents and lease data in share files also led to a
+  security bug (ticket `#1528`_).
 
 - When only the disk backend was supported, it was possible to read and
   update leases synchronously because the share files were stored locally
@@ -130,8 +131,9 @@ Share states
 
 The leasedb holds an explicit indicator of the state of each share.
 
-The diagram and descriptions below give the possible values of the "state" indicator, what that value means, and transitions
-between states, for any (storage_index, shnum) pair on each server::
+The diagram and descriptions below give the possible values of the "state"
+indicator, what that value means, and transitions between states, for any
+(storage_index, shnum) pair on each server::
 
 
   #        STATE_STABLE -------.
@@ -173,7 +175,7 @@ State transitions
 
 • **STATE_STABLE** → **NONE**
 	
-    trigger: The AccountingCrawler noticed that all the storage objects for
+    trigger: The accounting crawler noticed that all the storage objects for
     this share are gone.
 
     implementation:
@@ -202,7 +204,7 @@ State transitions
 
 • **STATE_COMING** → **STATE_STABLE**
 
-    trigger: all storage objects have been written.
+    trigger: All storage objects have been written.
 
     implementation:
 
