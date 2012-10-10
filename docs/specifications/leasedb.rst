@@ -141,11 +141,11 @@ indicator, what that value means, and transitions between states, for any
 
 
   #        STATE_STABLE -------.
-  #         ^   |    |         |
-  #         |   v    |         v
-  #    STATE_COMING  |    STATE_GOING
-  #         ^        |         |
-  #         |        v         |
+  #         ^   |   ^ |         |
+  #         |   v   | |         v
+  #    STATE_COMING | |    STATE_GOING
+  #         ^       | |         |
+  #         |       | v         |
   #         '----- NONE <------'
 
 
@@ -188,17 +188,21 @@ State transitions
 
 • **NONE** → **STATE_COMING**
 
-    trigger: A new share is being created.
+    trigger: A new share is being created, as explicitly signalled by a
+    client invoking a creation command, *or* the accounting crawler discovers
+    an incomplete share.
 
     implementation:
 
     1. Add an entry to the leasedb with **STATE_COMING**.
 
-    2. Begin writing the store objects to hold the share.
+    2. (In case of explicit creation) begin writing the store objects to hold
+       the share.
 
 • **STATE_STABLE** → **STATE_COMING**
 
-    trigger: a mutable share is being modified.
+    trigger: A mutable share is being modified, as explicitly signalled by a
+    client invoking a modification command.
 
     implementation:
 
@@ -214,6 +218,14 @@ State transitions
 
     1. Change the state value of this entry in the leasedb from
        **STATE_COMING** to **STATE_STABLE**.
+
+• **NONE** → **STATE_STABLE**
+
+    trigger: the accounting crawler discovers a complete share.
+
+    implementation:
+
+    1. Add an entry to the leasedb with **STATE_STABLE**.
 
 • **STATE_STABLE** → **STATE_GOING**
 
