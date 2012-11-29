@@ -69,7 +69,7 @@ CREATE INDEX `prefix` ON `shares` (`prefix`);
 
 CREATE TABLE `leases`
 (
- `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `id` INTEGER PRIMARY KEY,
  `storage_index` VARCHAR(26) not null,
  `shnum` INTEGER not null,
  `account_id` INTEGER not null,
@@ -84,7 +84,7 @@ CREATE INDEX `expiration_time` ON `leases` (`expiration_time`);
 
 CREATE TABLE accounts
 (
- `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `id` INTEGER PRIMARY KEY,
  `pubkey_vs` VARCHAR(52),
  `creation_time` INTEGER
 );
@@ -92,7 +92,7 @@ CREATE UNIQUE INDEX `pubkey_vs` ON `accounts` (`pubkey_vs`);
 
 CREATE TABLE account_attributes
 (
- `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+ `id` INTEGER PRIMARY KEY,
  `account_id` INTEGER,
  `name` VARCHAR(20),
  `value` VARCHAR(20) -- actually anything: usually string, unicode, integer
