@@ -4269,17 +4269,17 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["good"]))
         d.addCallback(lambda good_shares: self.failUnlessReallyEqual(len(good_shares), 10))
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["sick"]))
-        d.addCallback(lambda sick_shares: sick_shares[0][2].remove())
+        d.addCallback(lambda sick_shares: fileutil.remove(sick_shares[0][2]))
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["dead"]))
         def _remove_dead_shares(dead_shares):
             for i in range(1, 10):
-                dead_shares[i][2].remove()
+                fileutil.remove(dead_shares[i][2])
         d.addCallback(_remove_dead_shares)
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["corrupt"]))
         def _corrupt_shares(c_shares):
             cso = CorruptShareOptions()
             cso.stdout = StringIO()
-            cso.parseOptions([c_shares[0][2].path])
+            cso.parseOptions([c_shares[0][2]])
             corrupt_share(cso)
         d.addCallback(_corrupt_shares)
 
@@ -4411,17 +4411,17 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["good"]))
         d.addCallback(lambda good_shares: self.failUnlessReallyEqual(len(good_shares), 10))
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["sick"]))
-        d.addCallback(lambda sick_shares: sick_shares[0][2].remove())
+        d.addCallback(lambda sick_shares: fileutil.remove(sick_shares[0][2]))
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["dead"]))
         def _remove_dead_shares(dead_shares):
             for i in range(1, 10):
-                dead_shares[i][2].remove()
+                fileutil.remove(dead_shares[i][2])
         d.addCallback(_remove_dead_shares)
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["corrupt"]))
         def _corrupt_shares(c_shares):
             cso = CorruptShareOptions()
             cso.stdout = StringIO()
-            cso.parseOptions([c_shares[0][2].path])
+            cso.parseOptions([c_shares[0][2]])
             corrupt_share(cso)
         d.addCallback(_corrupt_shares)
 
@@ -4480,7 +4480,7 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
         d.addCallback(_compute_fileurls)
 
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["sick"]))
-        d.addCallback(lambda sick_shares: sick_shares[0][2].remove())
+        d.addCallback(lambda sick_shares: fileutil.remove(sick_shares[0][2]))
 
         d.addCallback(self.CHECK, "sick", "t=check&repair=true&output=json")
         def _got_json_sick(res):
@@ -4968,17 +4968,17 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["good"]))
         d.addCallback(lambda good_shares: self.failUnlessReallyEqual(len(good_shares), 10))
         d.addCallback(lambda ign: self.find_uri_shares(self.uris["sick"]))
-        d.addCallback(lambda sick_shares: sick_shares[0][2].remove())
+        d.addCallback(lambda sick_shares: fileutil.remove(sick_shares[0][2]))
         #d.addCallback(lambda ign: self.find_uri_shares(self.uris["dead"]))
         #def _remove_dead_shares(dead_shares):
         #    for i in range(1, 10):
-        #        dead_shares[i][2].remove()
+        #        fileutil.remove(dead_shares[i][2])
         #d.addCallback(_remove_dead_shares)
         #d.addCallback(lambda ign: self.find_uri_shares(self.uris["corrupt"]))
         #def _corrupt_shares(c_shares):
         #    cso = CorruptShareOptions()
         #    cso.stdout = StringIO()
-        #    cso.parseOptions([c_shares[0][2].path])
+        #    cso.parseOptions([c_shares[0][2]])
         #    corrupt_share(cso)
         #d.addCallback(_corrupt_shares)
 
