@@ -5029,15 +5029,18 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
         d.addErrback(self.explain_web_error)
         return d
 
-    def _assert_leasecount(self, which, expected):
-        d = self.count_leases(self.uris[which])
-        def _got_counts(lease_counts):
-            for (fn, num_leases) in lease_counts:
-                if num_leases != expected:
-                    self.fail("expected %d leases, have %d, on %s" %
-                              (expected, num_leases, fn))
-        d.addCallback(_got_counts)
-        return d
+    def _assert_leasecount(self, ign, which, expected):
+        u = self.uris[which]
+        si = uri.from_string(u).get_storage_index()
+        num_leases = 0
+        for server in self.g.servers_by_number.values():
+            ss = server.get_accountant().get_anonymous_account()
+            ss2 = server.get_accountant().get_starter_account()
+            num_leases += len(ss.get_leases(si)) + len(ss2.get_leases(si))
+
+        if num_leases != expected:
+            self.fail("expected %d leases, have %d, on '%s'" %
+                      (expected, num_leases, which))
 
     def test_add_lease(self):
         self.basedir = "web/Grid/add_lease"
@@ -5067,9 +5070,9 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
                 self.fileurls[which] = "uri/" + urllib.quote(self.uris[which])
         d.addCallback(_compute_fileurls)
 
-        d.addCallback(lambda ign: self._assert_leasecount("one", N))
-        d.addCallback(lambda ign: self._assert_leasecount("two", N))
-        d.addCallback(lambda ign: self._assert_leasecount("mutable", N))
+        d.addCallback(self._assert_leasecount, "one", N)
+        d.addCallback(self._assert_leasecount, "two", N)
+        d.addCallback(self._assert_leasecount, "mutable", N)
 
         d.addCallback(self.CHECK, "one", "t=check") # no add-lease
         def _got_html_good(res):
@@ -5077,18 +5080,18 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
             self.failIfIn("Not Healthy", res)
         d.addCallback(_got_html_good)
 
-        d.addCallback(lambda ign: self._assert_leasecount("one", N))
-        d.addCallback(lambda ign: self._assert_leasecount("two", N))
-        d.addCallback(lambda ign: self._assert_leasecount("mutable", N))
+        d.addCallback(self._assert_leasecount, "one", N)
+        d.addCallback(self._assert_leasecount, "two", N)
+        d.addCallback(self._assert_leasecount, "mutable", N)
 
         # this CHECK uses the original client, which uses the same
         # lease-secrets, so it will just renew the original lease
         d.addCallback(self.CHECK, "one", "t=check&add-lease=true")
         d.addCallback(_got_html_good)
 
-        d.addCallback(lambda ign: self._assert_leasecount("one", N))
-        d.addCallback(lambda ign: self._assert_leasecount("two", N))
-        d.addCallback(lambda ign: self._assert_leasecount("mutable", N))
+        d.addCallback(self._assert_leasecount, "one", N)
+        d.addCallback(self._assert_leasecount, "two", N)
+        d.addCallback(self._assert_leasecount, "mutable", N)
 
         # this CHECK uses an alternate client, which adds a second lease
         d.addCallback(self.CHECK, "one", "t=check&add-lease=true", clientnum=1)
@@ -5150,9 +5153,9 @@ class Grid(GridTestMixin, WebErrorMixin, ShouldFailMixin, testutil.ReallyEqualMi
             self.failUnlessReallyEqual(len(units), 4+1)
         d.addCallback(_done)
 
-        d.addCallback(lambda ign: self._assert_leasecount("root", N))
-        d.addCallback(lambda ign: self._assert_leasecount("one", N))
-        d.addCallback(lambda ign: self._assert_leasecount("mutable", N))
+        d.addCallback(self._assert_leasecount, "root", N)
+        d.addCallback(self._assert_leasecount, "one", N)
+        d.addCallback(self._assert_leasecount, "mutable", N)
 
         d.addCallback(self.CHECK, "root", "t=stream-deep-check&add-lease=true")
         d.addCallback(_done)

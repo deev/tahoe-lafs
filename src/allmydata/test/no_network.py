@@ -401,23 +401,6 @@ class GridTestMixin:
         d.addCallback(lambda ign: sorted(sharelist))
         return d
 
-    def count_leases(self, uri):
-        """Return (filename, leasecount) pairs in arbitrary order."""
-        si = tahoe_uri.from_string(uri).get_storage_index()
-        lease_counts = []
-        d = defer.succeed(None)
-        for i, server in self.g.servers_by_number.items():
-            d.addCallback(lambda ign, server=server: server.backend.get_shareset(si).get_shares())
-            def _append_counts( (shares_for_server, corrupted) ):
-                assert len(corrupted) == 0, (shares_for_server, corrupted)
-                for share in shares_for_server:
-                    num_leases = len(list(share.get_leases()))
-                    lease_counts.append( (share._get_path(), num_leases) )
-            d.addCallback(_append_counts)
-
-        d.addCallback(lambda ign: lease_counts)
-        return d
-
     def copy_shares(self, uri):
         shares = {}
         d = self.find_uri_shares(uri)
