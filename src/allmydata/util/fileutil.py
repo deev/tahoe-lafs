@@ -225,6 +225,15 @@ def remove_if_possible(f):
     except:
         pass
 
+def rmdir_if_empty(path):
+    """ Remove the directory if it is empty. """
+    try:
+        os.rmdir(path)
+    except OSError, e:
+        if e.errno != errno.ENOTEMPTY:
+            raise
+
+
 ASCII = re.compile(r'^[\x00-\x7F]*$')
 
 def listdir(path, filter=ASCII):
