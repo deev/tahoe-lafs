@@ -740,21 +740,20 @@ class MutableFileVersion:
         self._writekey = writekey
         self._serializer = defer.succeed(None)
 
-
     def get_sequence_number(self):
         """
         Get the sequence number of the mutable version that I represent.
         """
         return self._version[0] # verinfo[0] == the sequence number
 
+    def get_servermap(self):
+        return self._servermap
 
-    # TODO: Terminology?
     def get_writekey(self):
         """
         I return a writekey or None if I don't have a writekey.
         """
         return self._writekey
-
 
     def set_downloader_hints(self, hints):
         """
@@ -764,13 +763,11 @@ class MutableFileVersion:
 
         self._downloader_hints = hints
 
-
     def get_downloader_hints(self):
         """
         I return the downloader hints.
         """
         return self._downloader_hints
-
 
     def overwrite(self, new_contents):
         """
@@ -781,13 +778,11 @@ class MutableFileVersion:
 
         return self._do_serialized(self._overwrite, new_contents)
 
-
     def _overwrite(self, new_contents):
         assert IMutableUploadable.providedBy(new_contents)
         assert self._servermap.get_last_update()[0] == MODE_WRITE
 
         return self._upload(new_contents)
-
 
     def modify(self, modifier, backoffer=None):
         """I use a modifier callback to apply a change to the mutable file.
@@ -833,12 +828,10 @@ class MutableFileVersion:
 
         return self._do_serialized(self._modify, modifier, backoffer)
 
-
     def _modify(self, modifier, backoffer):
         if backoffer is None:
             backoffer = BackoffAgent().delay
         return self._modify_and_retry(modifier, backoffer, True)
-
 
     def _modify_and_retry(self, modifier, backoffer, first_time):
         """
@@ -871,7 +864,6 @@ class MutableFileVersion:
             return d2
         d.addErrback(_retry)
         return d
-
 
     def _modify_once(self, modifier, first_time):
         """
@@ -908,7 +900,6 @@ class MutableFileVersion:
         d.addCallback(_apply)
         return d
 
-
     def is_readonly(self):
         """
         I return True if this MutableFileVersion provides no write
@@ -917,7 +908,6 @@ class MutableFileVersion:
         """
         return self._writekey is None
 
-
     def is_mutable(self):
         """
         I return True, since mutable files are always mutable by
@@ -925,20 +915,17 @@ class MutableFileVersion:
         """
         return True
 
-
     def get_storage_index(self):
         """
         I return the storage index of the reference that I encapsulate.
         """
         return self._storage_index
 
-
     def get_size(self):
         """
         I return the length, in bytes, of this readable object.
         """
         return self._servermap.size_of_version(self._version)
-
 
     def download_to_data(self, fetch_privkey=False):
         """
@@ -950,7 +937,6 @@ class MutableFileVersion:
         d = self.read(c, fetch_privkey=fetch_privkey)
         d.addCallback(lambda mc: "".join(mc.chunks))
         return d
-
 
     def _try_to_download_data(self):
         """
@@ -964,7 +950,6 @@ class MutableFileVersion:
         d.addCallback(lambda mc: "".join(mc.chunks))
         return d
 
-
     def read(self, consumer, offset=0, size=None, fetch_privkey=False):
         """
         I read a portion (possibly all) of the mutable file that I
@@ -972,7 +957,6 @@ class MutableFileVersion:
         """
         return self._do_serialized(self._read, consumer, offset, size,
                                    fetch_privkey)
-
 
     def _read(self, consumer, offset=0, size=None, fetch_privkey=False):
         """
@@ -984,7 +968,6 @@ class MutableFileVersion:
             self._history.notify_retrieve(r.get_status())
         d = r.download(consumer, offset, size)
         return d
-
 
     def _do_serialized(self, cb, *args, **kwargs):
         # note: to avoid deadlock, this callable is *not* allowed to invoke
@@ -1004,7 +987,6 @@ class MutableFileVersion:
         self._serializer.addErrback(log.err)
         return d
 
-
     def _upload(self, new_contents):
         #assert self._pubkey, "update_servermap must be called before publish"
         p = Publish(self._node, self._storage_broker, self._servermap)
@@ -1014,7 +996,6 @@ class MutableFileVersion:
         d = p.publish(new_contents)
         d.addCallback(self._did_upload, new_contents.get_size())
         return d
-
 
     def _did_upload(self, res, size):
         self._most_recent_size = size
@@ -1035,7 +1016,6 @@ class MutableFileVersion:
         file again, which will use O(filesize) resources.
         """
         return self._do_serialized(self._update, data, offset)
-
 
     def _update(self, data, offset):
         """
@@ -1066,7 +1046,6 @@ class MutableFileVersion:
         d.addCallback(self._build_uploadable_and_finish, data, offset)
         return d
 
-
     def _do_modify_update(self, data, offset):
         """
         I perform a file update by modifying the contents of the file
@@ -1081,7 +1060,6 @@ class MutableFileVersion:
             new += old[rest:]
             return new
         return self._modify(m, None)
-
 
     def _do_update_update(self, data, offset):
         """
@@ -1117,7 +1095,6 @@ class MutableFileVersion:
         # this update range.
         return self._update_servermap(update_range=(start_segment,
                                                     end_segment))
-
 
     def _decode_and_decrypt_segments(self, ignored, data, offset):
         """
@@ -1162,7 +1139,6 @@ class MutableFileVersion:
         d3 = defer.succeed(blockhashes)
         return deferredutil.gatherResults([d1, d2, d3])
 
-
     def _build_uploadable_and_finish(self, segments_and_bht, data, offset):
         """
         After the process has the plaintext segments, I build the
@@ -1177,7 +1153,6 @@ class MutableFileVersion:
                                    segments_and_bht[1])
         p = Publish(self._node, self._storage_broker, self._servermap)
         return p.update(u, offset, segments_and_bht[2], self._version)
-
 
     def _update_servermap(self, mode=MODE_WRITE, update_range=None):
         """

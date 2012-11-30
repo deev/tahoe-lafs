@@ -17,7 +17,7 @@ from allmydata.check_results import CheckResults, CheckAndRepairResults, \
 from allmydata.storage_client import StubServer
 from allmydata.mutable.layout import unpack_header
 from allmydata.mutable.publish import MutableData
-from allmydata.storage.backends.disk.mutable import MutableShareFile
+from allmydata.storage.backends.disk.mutable import MutableDiskShare
 from allmydata.util import hashutil, log, fileutil, pollmixin
 from allmydata.util.assertutil import precondition
 from allmydata.util.consumer import download_to_data
@@ -485,6 +485,9 @@ class SystemTestMixin(pollmixin.PollMixin, testutil.StallMixin):
         d.addBoth(flush_but_dont_ignore)
         return d
 
+    def workdir(self, name):
+        return os.path.join("system", self.__class__.__name__, name)
+
     def getdir(self, subdir):
         return os.path.join(self.basedir, subdir)
 
@@ -597,11 +600,10 @@ class SystemTestMixin(pollmixin.PollMixin, testutil.StallMixin):
                 config += "web.port = tcp:0:interface=127.0.0.1\n"
                 config += "timeout.disconnect = 1800\n"
 
-            fileutil.write(os.path.join(basedir, 'tahoe.cfg'), config)
+            # give subclasses a chance to append lines to the nodes' tahoe.cfg files.
+            config += self._get_extra_config(i)
 
-        # give subclasses a chance to append lines to the node's tahoe.cfg
-        # files before they are launched.
-        self._set_up_nodes_extra_config()
+            fileutil.write(os.path.join(basedir, 'tahoe.cfg'), config)
 
         # start clients[0], wait for it's tub to be ready (at which point it
         # will have registered the helper furl).
@@ -639,9 +641,9 @@ class SystemTestMixin(pollmixin.PollMixin, testutil.StallMixin):
         d.addCallback(_connected)
         return d
 
-    def _set_up_nodes_extra_config(self):
+    def _get_extra_config(self, i):
         # for overriding by subclasses
-        pass
+        return ""
 
     def _grab_stats(self, res):
         d = self.stats_gatherer.poll()
@@ -1301,8 +1303,8 @@ def _corrupt_offset_of_uri_extension_to_force_short_read(data, debug=False):
 
 def _corrupt_mutable_share_data(data, debug=False):
     prefix = data[:32]
-    assert prefix == MutableShareFile.MAGIC, "This function is designed to corrupt mutable shares of v1, and the magic number doesn't look right: %r vs %r" % (prefix, MutableShareFile.MAGIC)
-    data_offset = MutableShareFile.DATA_OFFSET
+    assert prefix == MutableDiskShare.MAGIC, "This function is designed to corrupt mutable shares of v1, and the magic number doesn't look right: %r vs %r" % (prefix, MutableDiskShare.MAGIC)
+    data_offset = MutableDiskShare.DATA_OFFSET
     sharetype = data[data_offset:data_offset+1]
     assert sharetype == "\x00", "non-SDMF mutable shares not supported"
     (version, ig_seqnum, ig_roothash, ig_IV, ig_k, ig_N, ig_segsize,

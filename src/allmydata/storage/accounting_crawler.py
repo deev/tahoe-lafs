@@ -1,14 +1,12 @@
 
-import os, time
+import os.path, time
 
 from twisted.internet import defer
-from twisted.python.filepath import FilePath
 
 from allmydata.util.deferredutil import for_items
-from allmydata.util.fileutil import get_used_space
-from allmydata.util import log
+from allmydata.util import fileutil, log
 from allmydata.storage.crawler import ShareCrawler
-from allmydata.storage.common import si_a2b
+from allmydata.storage.common import si_a2b, NUM_RE
 from allmydata.storage.leasedb import SHARETYPES, SHARETYPE_UNKNOWN
 
 
@@ -23,30 +21,32 @@ class AccountingCrawler(ShareCrawler):
     - Recover from a situation where the leasedb is lost or detectably
       corrupted. This is handled in the same way as upgrading.
     - Detect shares that have unexpectedly disappeared from storage.
+
+    See ticket #1834 for a proposal to greatly reduce the scope of what I am
+    responsible for, and the times when I might do work.
     """
 
     slow_start = 600 # don't start crawling for 10 minutes after startup
     minimum_cycle_time = 12*60*60 # not more than twice per day
 
-    def __init__(self, server, statefile, leasedb):
-        ShareCrawler.__init__(self, server, statefile)
+    def __init__(self, backend, statefile, leasedb, clock=None):
+        ShareCrawler.__init__(self, backend, statefile, clock=clock)
         self._leasedb = leasedb
 
-    def process_prefixdir(self, cycle, prefix, prefixdir, buckets, start_slice):
+    def process_prefix(self, cycle, prefix, start_slice):
         # assume that we can list every prefixdir in this prefix quickly.
         # Otherwise we have to retain more state between timeslices.
 
+        prefixdir = os.path.join(self.sharedir, prefix)
+        sharesets = self._list_sharesets(prefixdir)
+
         # we define "shareid" as (SI string, shnum)
-        disk_shares = set() # shareid
-        for si_s in buckets:
-            bucketdir = os.path.join(prefixdir, si_s)
-            for sharefile in os.listdir(bucketdir):
-                try:
-                    shnum = int(sharefile)
-                except ValueError:
-                    continue # non-numeric means not a sharefile
-                shareid = (si_s, shnum)
-                disk_shares.add(shareid)
+        stored_shares = set() # shareid
+        for si_s in sharesets:
+            sidir = os.path.join(prefixdir, si_s)
+            for shnumstr in fileutil.listdir(sidir, filter=NUM_RE):
+                shareid = (si_s, int(shnumstr))
+                stored_shares.add(shareid)
 
         # now check the database for everything in this prefix
         db_sharemap = self._leasedb.get_shares_for_prefix(prefix)
@@ -78,17 +78,17 @@ class AccountingCrawler(ShareCrawler):
             self.increment(rec, "examined-buckets-" + SHARETYPES[st], len(examined_sharesets[st]))
 
         # add new shares to the DB
-        new_shares = disk_shares - db_shares
+        new_shares = stored_shares - db_shares
         for (si_s, shnum) in new_shares:
-            fp = FilePath(prefixdir).child(si_s).child(str(shnum))
-            used_space = get_used_space(fp)
+            sharepath = os.path.join(prefixdir, si_s, str(shnum))
+            used_space = fileutil.get_used_space(sharepath)
             # FIXME
             sharetype = SHARETYPE_UNKNOWN
             self._leasedb.add_new_share(si_a2b(si_s), shnum, used_space, sharetype)
             self._leasedb.add_starter_lease(si_s, shnum)
 
         # remove disappeared shares from DB
-        disappeared_shares = db_shares - disk_shares
+        disappeared_shares = db_shares - stored_shares
         for (si_s, shnum) in disappeared_shares:
             log.msg(format="share SI=%(si_s)s shnum=%(shnum)s unexpectedly disappeared",
                     si_s=si_s, shnum=shnum, level=log.WEIRD)

@@ -7,6 +7,7 @@ from allmydata.test.no_network import NoNetworkGrid
 from allmydata.immutable.upload import Data
 from allmydata.util.consumer import download_to_data
 
+
 class Harness(unittest.TestCase):
     def setUp(self):
         self.s = service.MultiService()

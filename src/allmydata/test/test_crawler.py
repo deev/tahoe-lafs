@@ -8,7 +8,7 @@ from foolscap.api import fireEventually
 
 from allmydata.util import fileutil, hashutil
 from allmydata.storage.server import StorageServer, si_b2a
-from allmydata.storage.crawler import ShareCrawler
+from allmydata.storage.crawler import ShareCrawler, TimeSliceExceeded
 
 from allmydata.test.test_storage import FakeCanary
 from allmydata.test.common import CrawlerTestMixin
@@ -23,8 +23,9 @@ class EnumeratingCrawler(ShareCrawler):
         ShareCrawler.__init__(self, *args, **kwargs)
         self.sharesets = []
 
-    def process_bucket(self, cycle, prefix, prefixdir, storage_index_b32):
-        self.sharesets.append(storage_index_b32)
+    def process_prefix(self, cycle, prefix, start_slice):
+        prefixdir = os.path.join(self.sharedir, prefix)
+        self.sharesets += self._list_sharesets(prefixdir)
 
 
 class ConsumingCrawler(ShareCrawler):
@@ -39,12 +40,19 @@ class ConsumingCrawler(ShareCrawler):
         self.cycles = 0
         self.last_yield = 0.0
 
-    def process_bucket(self, cycle, prefix, prefixdir, storage_index_b32):
-        start = time.time()
-        time.sleep(0.05)
-        elapsed = time.time() - start
-        self.accumulated += elapsed
-        self.last_yield += elapsed
+    def process_prefix(self, cycle, prefix, start_slice):
+        # XXX I don't know whether this behaviour makes sense for the test
+        # that uses it any more.
+        prefixdir = os.path.join(self.sharedir, prefix)
+        sharesets = self._list_sharesets(prefixdir)
+        for shareset in sharesets:
+            start = time.time()
+            time.sleep(0.05)
+            elapsed = time.time() - start
+            self.accumulated += elapsed
+            self.last_yield += elapsed
+            if self.clock.seconds() >= start_slice + self.cpu_slice:
+                raise TimeSliceExceeded()
 
     def finished_cycle(self, cycle):
         self.cycles += 1
@@ -79,13 +87,19 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
     def write(self, i, aa, serverid, tail=0):
         si = self.si(i)
         si = si[:-1] + chr(tail)
-        had,made = aa.remote_allocate_buckets(si,
-                                              self.rs(i, serverid),
-                                              self.cs(i, serverid),
-                                              set([0]), 99, FakeCanary())
-        made[0].remote_write(0, "data")
-        made[0].remote_close()
-        return si_b2a(si)
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: aa.remote_allocate_buckets(si,
+                                                             self.rs(i, serverid),
+                                                             self.cs(i, serverid),
+                                                             set([0]), 99, FakeCanary()))
+        def _allocated( (had, made) ):
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: made[0].remote_write(0, "data"))
+            d2.addCallback(lambda ign: made[0].remote_close())
+            d2.addCallback(lambda ign: si_b2a(si))
+            return d2
+        d.addCallback(_allocated)
+        return d
 
     def test_service(self):
         server = self.create("crawler/Basic/service")
@@ -145,6 +159,9 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         # can produce interesting results. So if you care about how well the
         # Crawler is accomplishing it's run-slowly goals, re-enable this test
         # and read the stdout when it runs.
+
+        # FIXME: it should be possible to make this test run deterministically
+        # by passing a Clock into the crawler.
 
         server = self.create("crawler/Basic/cpu_usage")
         aa = server.get_accountant().get_anonymous_account()

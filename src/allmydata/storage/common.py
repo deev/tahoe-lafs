@@ -1,12 +1,23 @@
 
-import os.path
+import os, re
+
 from allmydata.util import base32
+
+
+# Share numbers match this regex:
+NUM_RE=re.compile("^[0-9]+$")
+
 
 class DataTooLargeError(Exception):
     pass
-class UnknownMutableContainerVersionError(Exception):
+
+class UnknownContainerVersionError(Exception):
     pass
-class UnknownImmutableContainerVersionError(Exception):
+
+class UnknownMutableContainerVersionError(UnknownContainerVersionError):
+    pass
+
+class UnknownImmutableContainerVersionError(UnknownContainerVersionError):
     pass
 
 

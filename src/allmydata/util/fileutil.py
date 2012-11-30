@@ -2,7 +2,7 @@
 Futz with files like a pro.
 """
 
-import sys, exceptions, os, stat, tempfile, time, binascii
+import errno, sys, exceptions, os, re, stat, tempfile, time, binascii
 
 from twisted.python import log
 
@@ -202,10 +202,12 @@ def rm_dir(dirname):
             else:
                 remove(fullname)
         os.rmdir(dirname)
-    except Exception, le:
-        # Ignore "No such file or directory"
-        if (not isinstance(le, OSError)) or le.args[0] != 2:
+    except EnvironmentError, le:
+        # Ignore "No such file or directory", collect any other exception.
+        if (le.args[0] != 2 and le.args[0] != 3) or (le.args[0] != errno.ENOENT):
             excs.append(le)
+    except Exception, le:
+        excs.append(le)
 
     # Okay, now we've recursively removed everything, ignoring any "No
     # such file or directory" errors, and collecting any other errors.
@@ -217,12 +219,23 @@ def rm_dir(dirname):
             raise OSError, "Failed to remove dir for unknown reason."
         raise OSError, excs
 
-
 def remove_if_possible(f):
     try:
         remove(f)
     except:
         pass
+
+ASCII = re.compile(r'^[\x00-\x7F]*$')
+
+def listdir(path, filter=ASCII):
+    try:
+        children = os.listdir(path)
+    except OSError, e:
+        if e.errno != errno.ENOENT:
+            raise
+        return []
+    else:
+        return [str(child) for child in children if filter.match(child)]
 
 def open_or_create(fname, binarymode=True):
     try:
@@ -255,8 +268,8 @@ def write_atomically(target, contents, mode="b"):
         f.close()
     move_into_place(target+".tmp", target)
 
-def write(path, data):
-    wf = open(path, "wb")
+def write(path, data, mode="b"):
+    wf = open(path, "w"+mode)
     try:
         wf.write(data)
     finally:
@@ -356,7 +369,6 @@ def get_disk_stats(whichdir, reserved_space=0):
     you can pass how many bytes you would like to leave unused on this
     filesystem as reserved_space.
     """
-
     if have_GetDiskFreeSpaceExW:
         # If this is a Windows system and GetDiskFreeSpaceExW is available, use it.
         # (This might put up an error dialog unless
@@ -407,6 +419,7 @@ def get_disk_stats(whichdir, reserved_space=0):
              'avail': avail,
            }
 
+
 def get_available_space(whichdir, reserved_space):
     """Returns available space for share storage in bytes, or None if no
     API to get this information is available.
@@ -428,13 +441,13 @@ def get_available_space(whichdir, reserved_space):
         return 0
 
 
-def get_used_space(fp):
-    if fp is None:
+def get_used_space(path):
+    if path is None:
         return 0
     try:
-        s = os.stat(fp.path)
+        s = os.stat(path)
     except EnvironmentError:
-        if not fp.exists():
+        if not os.path.exists(path):
             return 0
         raise
     else:
@@ -453,8 +466,8 @@ def get_used_space(fp):
         # [in] 512-byte units." It is also defined that way on MacOS X. Python does
         # not set the attribute on Windows.
         #
-        # We consider platforms that define st_blocks but give it a wrong value, or
-        # measure it in a unit other than 512 bytes, to be broken. See also
+        # This code relies on the underlying platform to either define st_blocks in
+        # units of 512 bytes or else leave st_blocks undefined. See also
         # <http://bugs.python.org/issue12350>.
 
         if hasattr(s, 'st_blocks'):
