@@ -581,7 +581,7 @@ def find_shares(options):
     /home/warner/testnet/node-1/storage/shares/44k/44kai1tui348689nrw8fjegc8c/9
     /home/warner/testnet/node-2/storage/shares/44k/44kai1tui348689nrw8fjegc8c/2
     """
-    from allmydata.storage.server.common import si_a2b, NUM_RE
+    from allmydata.storage.common import si_a2b, NUM_RE
     from allmydata.storage.backends.disk.disk_backend import si_si2dir
     from allmydata.util import fileutil
     from allmydata.util.encodingutil import quote_output
