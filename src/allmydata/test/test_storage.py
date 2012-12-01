@@ -1500,8 +1500,7 @@ class WithMockCloudBackend:
         assert not readonly
         workdir = self.workdir(name)
         self._container = MockContainer(workdir)
-        corruption_advisory_dir = workdir.child("corruption-advisories")
-        backend = CloudBackend(self._container, corruption_advisory_dir=corruption_advisory_dir)
+        backend = CloudBackend(self._container)
         ss = klass("\x00" * 20, backend, workdir,
                    stats_provider=FakeStatsProvider())
         ss.setServiceParent(self.sparent)

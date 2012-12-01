@@ -1,4 +1,9 @@
-# -*- coding: utf-8 -*-
+
+import random
+
+from twisted.internet import defer
+from twisted.trial import unittest
+
 from allmydata.test import common
 from allmydata.monitor import Monitor
 from allmydata import check_results
@@ -6,17 +11,15 @@ from allmydata.interfaces import NotEnoughSharesError
 from allmydata.immutable import upload
 from allmydata.util import fileutil
 from allmydata.util.consumer import download_to_data
-from twisted.internet import defer
-from twisted.trial import unittest
-import random
 from allmydata.test.no_network import GridTestMixin
+
 
 # We'll allow you to pass this test even if you trigger eighteen times as
 # many disk reads and block fetches as would be optimal.
 READ_LEEWAY = 18
 MAX_DELTA_READS = 10 * READ_LEEWAY # N = 10
 
-timeout=240 # François's ARM box timed out after 120 seconds of Verifier.test_corrupt_crypttext_hashtree
+timeout=240 # Franc,ois's ARM box timed out after 120 seconds of Verifier.test_corrupt_crypttext_hashtree
 
 class RepairTestMixin:
     def failUnlessIsInstance(self, x, xtype):

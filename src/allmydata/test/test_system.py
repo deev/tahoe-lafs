@@ -7,7 +7,6 @@ from twisted.internet import threads # CLI tests use deferToThread
 
 import allmydata
 from allmydata import uri
-from allmydata.storage.backends.disk.disk_backend import DiskBackend
 from allmydata.storage.backends.disk.mutable import load_mutable_disk_share
 from allmydata.storage.backends.cloud import cloud_common, mock_cloud
 from allmydata.storage.server import si_a2b
