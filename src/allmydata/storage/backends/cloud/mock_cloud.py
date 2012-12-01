@@ -3,6 +3,7 @@ import os.path
 
 from twisted.internet import defer
 from twisted.web.error import Error
+from allmydata.util.deferredutil import async_iterate
 
 from zope.interface import implements
 
@@ -11,7 +12,6 @@ from allmydata.storage.backends.cloud.cloud_common import IContainer, \
 from allmydata.storage.common import NUM_RE
 from allmydata.util.time_format import iso_utc
 from allmydata.util import fileutil
-from allmydata.util.deferredutil import async_iterate
 
 
 MAX_KEYS = 1000
@@ -37,6 +37,8 @@ class MockContainer(ContainerRetryMixin, ContainerListMixin):
         self.ServiceError = MockServiceError
         self._load_count = 0
         self._store_count = 0
+
+        fileutil.make_dirs(os.path.join(self._storagedir, "shares"))
 
     def __repr__(self):
         return ("<%s at %r>" % (self.__class__.__name__, self._storagedir,))
@@ -95,7 +97,7 @@ class MockContainer(ContainerRetryMixin, ContainerListMixin):
         assert content_type is None, content_type
         assert metadata == {}, metadata
         sharefile = self._get_path(object_name)
-        fileutil.make_dirs(os.path.basename(sharefile))
+        fileutil.make_dirs(os.path.dirname(sharefile))
         fileutil.write(sharefile, data)
         self._store_count += 1
         return defer.succeed(None)

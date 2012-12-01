@@ -166,14 +166,5 @@ class CloudShareSet(ShareSet):
 
     def _get_sharedir(self):
         # For use by tests, only with the mock cloud backend.
-        # It is OK that _get_filepath doesn't exist on real container objects.
-        return self._container._get_filepath(self._key)
-
-    def get_leases(self):
-        raise NotImplementedError
-
-    def add_or_renew_lease(self, lease_info):
-        raise NotImplementedError
-
-    def renew_lease(self, renew_secret, new_expiration_time):
-        raise NotImplementedError
+        # It is OK that _get_path doesn't exist on real container objects.
+        return self._container._get_path(self._key)
