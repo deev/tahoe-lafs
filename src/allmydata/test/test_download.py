@@ -826,9 +826,9 @@ class DownloadTest(_Base, unittest.TestCase):
         d = defer.succeed(None)
         d.addCallback(lambda ign: self.find_uri_shares(immutable_uri))
         def _duplicate(sharelist):
-            sh0_fp = [sharefp for (shnum, serverid, sharefp) in sharelist
-                      if shnum == 0][0]
-            sh0_data = sh0_fp.getContent()
+            sh0_file = [sharefile for (shnum, serverid, sharefile) in sharelist
+                        if shnum == 0][0]
+            sh0_data = fileutil.read(sh0_file)
             for clientnum in immutable_shares:
                 if 0 in immutable_shares[clientnum]:
                     continue

@@ -402,12 +402,12 @@ class Repairer(GridTestMixin, unittest.TestCase, RepairTestMixin,
         d.addCallback(lambda ign: self.find_uri_shares(self.uri))
         def _test_corrupt(shares):
             olddata = {}
-            for (shnum, serverid, sharefp) in shares:
-                olddata[ (shnum, serverid) ] = sharefp.getContent()
+            for (shnum, serverid, sharefile) in shares:
+                olddata[ (shnum, serverid) ] = fileutil.read(sharefile)
             for sh in shares:
                 self.corrupt_share(sh, common._corrupt_uri_extension)
-            for (shnum, serverid, sharefp) in shares:
-                newdata = sharefp.getContent()
+            for (shnum, serverid, sharefile) in shares:
+                newdata = fileutil.read(sharefile)
                 self.failIfEqual(olddata[ (shnum, serverid) ], newdata)
         d.addCallback(_test_corrupt)
 

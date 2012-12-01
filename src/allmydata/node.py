@@ -233,7 +233,7 @@ class Node(service.MultiService):
         config file that resides within the subdirectory named 'private'), and
         return it.
         """
-        fileutil.write(self._get_private_config_filepath(name), value, mode="")
+        fileutil.write(self._get_private_config_path(name), value, mode="")
 
     def get_optional_private_config(self, name):
         """Try to get the (string) contents of a private config file (which
