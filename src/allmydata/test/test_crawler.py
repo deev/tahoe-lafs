@@ -1,17 +1,20 @@
 
 import time
 import os.path
+
 from twisted.trial import unittest
 from twisted.application import service
 from twisted.internet import defer
 from foolscap.api import fireEventually
 
-from allmydata.util import fileutil, hashutil
+from allmydata.util import hashutil
 from allmydata.storage.server import StorageServer, si_b2a
 from allmydata.storage.crawler import ShareCrawler, TimeSliceExceeded
+from allmydata.storage.backends.disk.disk_backend import DiskBackend
+from allmydata.storage.backends.cloud.cloud_backend import CloudBackend
+from allmydata.storage.backends.cloud.mock_cloud import MockContainer
 
-from allmydata.test.test_storage import FakeCanary
-from allmydata.test.common import CrawlerTestMixin
+from allmydata.test.common import CrawlerTestMixin, FakeCanary
 from allmydata.test.common_util import StallMixin
 
 
@@ -66,7 +69,7 @@ class ConsumingCrawler(ShareCrawler):
         self.last_yield = 0.0
 
 
-class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
+class CrawlerTest(StallMixin, CrawlerTestMixin):
     def setUp(self):
         self.s = service.MultiService()
         self.s.startService()
@@ -81,11 +84,11 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
     def cs(self, i, serverid):
         return hashutil.bucket_cancel_secret_hash(str(i), serverid)
 
-    def create(self, basedir):
-        self.basedir = basedir
-        fileutil.make_dirs(basedir)
+    def create(self, name):
+        self.basedir = os.path.join("crawler", self.__class__.__name__, name)
         self.serverid = "\x00" * 20
-        server = StorageServer(basedir, self.serverid)
+        backend = self.make_backend(self.basedir)
+        server = StorageServer(self.serverid, backend, self.basedir)
         server.setServiceParent(self.s)
         return server
 
@@ -107,13 +110,13 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         return d
 
     def test_service(self):
-        server = self.create("crawler/Basic/service")
+        server = self.create("test_service")
         aa = server.get_accountant().get_anonymous_account()
 
         sis = [self.write(i, aa, self.serverid) for i in range(10)]
 
         statefile = os.path.join(self.basedir, "statefile")
-        c = EnumeratingCrawler(server, statefile)
+        c = EnumeratingCrawler(server.backend, statefile)
         c.setServiceParent(self.s)
 
         # it should be legal to call get_state() and get_progress() right
@@ -146,7 +149,7 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
 
         # Check that a new crawler picks up on the state file correctly.
         def _new_crawler(ign):
-            c2 = EnumeratingCrawler(server, statefile)
+            c2 = EnumeratingCrawler(server.backend, statefile)
             c2.setServiceParent(self.s)
 
             d2 = c2.set_hook('after_cycle')
@@ -168,14 +171,14 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         # FIXME: it should be possible to make this test run deterministically
         # by passing a Clock into the crawler.
 
-        server = self.create("crawler/Basic/cpu_usage")
+        server = self.create("test_cpu_usage")
         aa = server.get_accountant().get_anonymous_account()
 
         for i in range(10):
             self.write(i, aa, self.serverid)
 
         statefile = os.path.join(self.basedir, "statefile")
-        c = ConsumingCrawler(server, statefile)
+        c = ConsumingCrawler(server.backend, statefile)
         c.setServiceParent(self.s)
 
         # This will run as fast as it can, consuming about 50ms per call to
@@ -211,14 +214,14 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         return d
 
     def test_empty_subclass(self):
-        server = self.create("crawler/Basic/empty_subclass")
+        server = self.create("test_empty_subclass")
         aa = server.get_accountant().get_anonymous_account()
 
         for i in range(10):
             self.write(i, aa, self.serverid)
 
         statefile = os.path.join(self.basedir, "statefile")
-        c = ShareCrawler(server, statefile)
+        c = ShareCrawler(server.backend, statefile)
         c.slow_start = 0
         c.setServiceParent(self.s)
 
@@ -230,14 +233,14 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         return d
 
     def test_oneshot(self):
-        server = self.create("crawler/Basic/oneshot")
+        server = self.create("test_oneshot")
         aa = server.get_accountant().get_anonymous_account()
 
         for i in range(30):
             self.write(i, aa, self.serverid)
 
         statefile = os.path.join(self.basedir, "statefile")
-        c = EnumeratingCrawler(server, statefile)
+        c = EnumeratingCrawler(server.backend, statefile)
         c.setServiceParent(self.s)
 
         d = c.set_hook('after_cycle')
@@ -257,3 +260,12 @@ class Basic(unittest.TestCase, StallMixin, CrawlerTestMixin):
         d.addCallback(_check)
         return d
 
+
+class CrawlerTestWithDiskBackend(CrawlerTest, unittest.TestCase):
+    def make_backend(self, basedir):
+        return DiskBackend(basedir)
+
+
+class CrawlerTestWithMockCloudBackend(CrawlerTest, unittest.TestCase):
+    def make_backend(self, basedir):
+        return CloudBackend(MockContainer(basedir))

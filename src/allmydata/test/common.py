@@ -35,10 +35,31 @@ def flush_but_dont_ignore(res):
     d.addCallback(_done)
     return d
 
+
 class DummyProducer:
     implements(IPullProducer)
     def resumeProducing(self):
         pass
+
+
+class Marker:
+    pass
+
+class FakeCanary:
+    def __init__(self, ignore_disconnectors=False):
+        self.ignore = ignore_disconnectors
+        self.disconnectors = {}
+    def notifyOnDisconnect(self, f, *args, **kwargs):
+        if self.ignore:
+            return
+        m = Marker()
+        self.disconnectors[m] = (f, args, kwargs)
+        return m
+    def dontNotifyOnDisconnect(self, marker):
+        if self.ignore:
+            return
+        del self.disconnectors[marker]
+
 
 class FakeCHKFileNode:
     """I provide IImmutableFileNode, but all of my data is stored in a

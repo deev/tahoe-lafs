@@ -41,15 +41,13 @@ from allmydata.mutable.layout import MDMFSlotWriteProxy, MDMFSlotReadProxy, \
                                      VERIFICATION_KEY_SIZE, \
                                      SHARE_HASH_CHAIN_SIZE
 from allmydata.interfaces import BadWriteEnablerError
-from allmydata.test.common import LoggingServiceParent, ShouldFailMixin, CrawlerTestMixin
+from allmydata.test.common import LoggingServiceParent, ShouldFailMixin, CrawlerTestMixin, \
+     FakeCanary
 from allmydata.test.common_util import ReallyEqualMixin
 from allmydata.test.common_web import WebRenderingMixin
 from allmydata.test.no_network import NoNetworkServer
 from allmydata.web.storage import StorageStatus, remove_prefix
 
-
-class Marker:
-    pass
 
 class FakeAccount:
     def __init__(self, server):
@@ -60,21 +58,6 @@ class FakeAccount:
         pass
     def mark_share_as_stable(self, storage_index, shnum, used_space, commit=True):
         pass
-
-class FakeCanary:
-    def __init__(self, ignore_disconnectors=False):
-        self.ignore = ignore_disconnectors
-        self.disconnectors = {}
-    def notifyOnDisconnect(self, f, *args, **kwargs):
-        if self.ignore:
-            return
-        m = Marker()
-        self.disconnectors[m] = (f, args, kwargs)
-        return m
-    def dontNotifyOnDisconnect(self, marker):
-        if self.ignore:
-            return
-        del self.disconnectors[marker]
 
 class FakeStatsProvider:
     def count(self, name, delta=1):
