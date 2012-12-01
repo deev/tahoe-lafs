@@ -75,7 +75,7 @@ class DiskBackend(Backend):
         prefixdir = os.path.join(self._sharedir, prefix)
         sharesets = [self.get_shareset(si_a2b(si_s))
                      for si_s in sorted(fileutil.listdir(prefixdir))]
-        return sharesets
+        return defer.succeed(sharesets)
 
     def get_shareset(self, storage_index):
         sharehomedir = si_si2dir(self._sharedir, storage_index)

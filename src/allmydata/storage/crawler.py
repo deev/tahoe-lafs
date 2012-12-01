@@ -1,5 +1,5 @@
 
-import os, time, struct
+import time, struct
 import cPickle as pickle
 
 from twisted.internet import defer, reactor
@@ -369,15 +369,6 @@ class ShareCrawler(HookMixin, service.MultiService):
         d.addCallback(_done)
         return d
 
-    def _list_sharesets(self, prefixdir):
-        # XXX this will go away
-        try:
-            sharesets = os.listdir(prefixdir)
-            sharesets.sort()
-        except EnvironmentError:
-            sharesets = []
-        return sharesets
-
     def process_prefix(self, cycle, prefix, start_slice):
         """
         Called for each prefix.
@@ -457,12 +448,13 @@ class BucketCountingCrawler(ShareCrawler):
 
     def process_prefix(self, cycle, prefix, start_slice):
         # We don't need to look at the individual sharesets.
-        prefixdir = os.path.join(self.sharedir, prefix)
-        sharesets = self._list_sharesets(prefixdir)
-
-        if cycle not in self.state["bucket-counts"]:
-            self.state["bucket-counts"][cycle] = {}
-        self.state["bucket-counts"][cycle][prefix] = len(sharesets)
+        d = self.backend.get_sharesets_for_prefix(prefix)
+        def _got_sharesets(sharesets):
+            if cycle not in self.state["bucket-counts"]:
+                self.state["bucket-counts"][cycle] = {}
+            self.state["bucket-counts"][cycle][prefix] = len(sharesets)
+        d.addCallback(_got_sharesets)
+        return d
 
     def finished_cycle(self, cycle):
         last_counts = self.state["bucket-counts"].get(cycle, [])

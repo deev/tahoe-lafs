@@ -39,7 +39,7 @@ class NullBackend(Backend):
         def _by_base32si(b):
             return b.get_storage_index_string()
         sharesets.sort(key=_by_base32si)
-        return sharesets
+        return defer.succeed(sharesets)
 
     def get_shareset(self, storage_index):
         shareset = self._sharesets.get(storage_index, None)

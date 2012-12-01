@@ -24,8 +24,11 @@ class EnumeratingCrawler(ShareCrawler):
         self.sharesets = []
 
     def process_prefix(self, cycle, prefix, start_slice):
-        prefixdir = os.path.join(self.sharedir, prefix)
-        self.sharesets += self._list_sharesets(prefixdir)
+        d = self.backend.get_sharesets_for_prefix(prefix)
+        def _got_sharesets(sharesets):
+            self.sharesets += [s.get_storage_index_string() for s in sharesets]
+        d.addCallback(_got_sharesets)
+        return d
 
 
 class ConsumingCrawler(ShareCrawler):
@@ -43,16 +46,18 @@ class ConsumingCrawler(ShareCrawler):
     def process_prefix(self, cycle, prefix, start_slice):
         # XXX I don't know whether this behaviour makes sense for the test
         # that uses it any more.
-        prefixdir = os.path.join(self.sharedir, prefix)
-        sharesets = self._list_sharesets(prefixdir)
-        for shareset in sharesets:
-            start = time.time()
-            time.sleep(0.05)
-            elapsed = time.time() - start
-            self.accumulated += elapsed
-            self.last_yield += elapsed
-            if self.clock.seconds() >= start_slice + self.cpu_slice:
-                raise TimeSliceExceeded()
+        d = self.backend.get_sharesets_for_prefix(prefix)
+        def _got_sharesets(sharesets):
+            for shareset in sharesets:
+                start = time.time()
+                time.sleep(0.05)
+                elapsed = time.time() - start
+                self.accumulated += elapsed
+                self.last_yield += elapsed
+                if self.clock.seconds() >= start_slice + self.cpu_slice:
+                    raise TimeSliceExceeded()
+        d.addCallback(_got_sharesets)
+        return d
 
     def finished_cycle(self, cycle):
         self.cycles += 1
