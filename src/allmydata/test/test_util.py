@@ -6,7 +6,6 @@ from StringIO import StringIO
 from twisted.trial import unittest
 from twisted.internet import defer, reactor
 from twisted.python.failure import Failure
-from twisted.python.filepath import FilePath
 from twisted.python import log
 from pycryptopp.hash.sha256 import SHA256 as _hash
 
@@ -514,11 +513,11 @@ class FileUtil(unittest.TestCase):
                 os.chdir(saved_cwd)
 
     def test_disk_stats(self):
-        avail = fileutil.get_available_space(FilePath('.'), 2**14)
+        avail = fileutil.get_available_space('.', 2**14)
         if avail == 0:
             raise unittest.SkipTest("This test will spuriously fail there is no disk space left.")
 
-        disk = fileutil.get_disk_stats(FilePath('.'), 2**13)
+        disk = fileutil.get_disk_stats('.', 2**13)
         self.failUnless(disk['total'] > 0, disk['total'])
         self.failUnless(disk['used'] > 0, disk['used'])
         self.failUnless(disk['free_for_root'] > 0, disk['free_for_root'])
@@ -528,7 +527,7 @@ class FileUtil(unittest.TestCase):
     def test_disk_stats_avail_nonnegative(self):
         # This test will spuriously fail if you have more than 2^128
         # bytes of available space on your filesystem (lucky you).
-        disk = fileutil.get_disk_stats(FilePath('.'), 2**128)
+        disk = fileutil.get_disk_stats('.', 2**128)
         self.failUnlessEqual(disk['avail'], 0)
 
 class PollMixinTests(unittest.TestCase):

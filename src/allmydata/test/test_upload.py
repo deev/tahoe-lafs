@@ -979,7 +979,7 @@ class EncodingParameters(GridTestMixin, unittest.TestCase, SetDEPMixin,
                                         readonly=True))
         # Remove the first share from server 0.
         def _remove_share_0_from_server_0():
-            self.shares[0][2].remove()
+            fileutil.remove(self.shares[0][2])
         d.addCallback(lambda ign:
             _remove_share_0_from_server_0())
         # Set happy = 4 in the client.
@@ -1854,7 +1854,7 @@ class EncodingParameters(GridTestMixin, unittest.TestCase, SetDEPMixin,
             self._copy_share_to_server(3, 1)
             storedir = self.get_serverdir(0)
             # remove the storedir, wiping out any existing shares
-            fileutil.remove(storedir)
+            fileutil.rm_dir(storedir)
             # create an empty storedir to replace the one we just removed
             fileutil.make_dirs(storedir)
             client = self.g.clients[0]

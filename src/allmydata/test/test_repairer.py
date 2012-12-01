@@ -4,6 +4,7 @@ from allmydata.monitor import Monitor
 from allmydata import check_results
 from allmydata.interfaces import NotEnoughSharesError
 from allmydata.immutable import upload
+from allmydata.util import fileutil
 from allmydata.util.consumer import download_to_data
 from twisted.internet import defer
 from twisted.trial import unittest

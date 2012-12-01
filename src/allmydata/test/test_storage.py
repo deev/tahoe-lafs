@@ -1795,17 +1795,17 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
         def _allocated( (already, writers) ):
             d2 = defer.succeed(None)
             for i, bw in writers.items():
-                incoming_share_home = bw._share._get_filepath()
+                incoming_share_home = bw._share._get_path()
                 d2.addCallback(self._write_and_close, i, bw)
 
-            incoming_si_dir = incoming_share_home.parent()
-            incoming_prefix_dir = incoming_si_dir.parent()
-            incoming_dir = incoming_prefix_dir.parent()
+            incoming_si_dir = os.path.basename(incoming_share_home)
+            incoming_prefix_dir = os.path.basename(incoming_si_dir)
+            incoming_dir = os.path.basename(incoming_prefix_dir)
 
             def _check_existence(ign):
-                self.failIf(incoming_si_dir.exists(), incoming_si_dir)
-                self.failIf(incoming_prefix_dir.exists(), incoming_prefix_dir)
-                self.failUnless(incoming_dir.exists(), incoming_dir)
+                self.failIf(os.path.exists(incoming_si_dir.exists), incoming_si_dir)
+                self.failIf(os.path.exists(incoming_prefix_dir), incoming_prefix_dir)
+                self.failUnless(os.path.exists(incoming_dir), incoming_dir)
             d2.addCallback(_check_existence)
             return d2
         d.addCallback(_allocated)
