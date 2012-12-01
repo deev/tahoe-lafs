@@ -3,11 +3,11 @@ from collections import deque
 
 from twisted.internet import defer, reactor, task
 from twisted.python.failure import Failure
-from foolscap.logging import log
 
 from zope.interface import Interface, implements
 from allmydata.interfaces import IShareBase
 
+from allmydata.util import log
 from allmydata.util.assertutil import precondition, _assert
 from allmydata.util.deferredutil import eventually_callback, eventually_errback, eventual_chain, gatherResults
 from allmydata.storage.common import si_b2a, NUM_RE
@@ -387,11 +387,10 @@ class BackpressurePipeline(object):
 
     def add(self, _size, _func, *args, **kwargs):
         if self._state == self.CLOSED:
-            d = defer.succeed(self._result_d)
-            def _err(ign):
-                raise AssertionError("add() called on closed BackpressurePipeline")
-            d.addCallback(_err)
-            return d
+            msg = "add() called on closed BackpressurePipeline"
+            log.err(msg, level=log.WEIRD)
+            def _already_closed(): raise AssertionError(msg)
+            return defer.execute(_already_closed)
         self._gauge += _size
         self._unfinished += 1
         fd = defer.maybeDeferred(_func, *args, **kwargs)
