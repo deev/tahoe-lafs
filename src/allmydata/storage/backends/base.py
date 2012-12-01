@@ -29,9 +29,6 @@ class ShareSet(object):
     def __init__(self, storage_index):
         self.storage_index = storage_index
 
-    def get_shares_synchronous(self):
-        raise NotImplementedError
-
     def get_storage_index(self):
         return self.storage_index
 

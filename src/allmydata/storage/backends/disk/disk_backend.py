@@ -132,7 +132,7 @@ class DiskShareSet(ShareSet):
         return (fileutil.get_used_space(self._sharehomedir) +
                 fileutil.get_used_space(self._incominghomedir))
 
-    def get_shares_synchronous(self):
+    def get_shares(self):
         si = self.get_storage_index()
         shares = {}
         corrupted = set()
@@ -146,10 +146,8 @@ class DiskShareSet(ShareSet):
                     struct.error):
                 corrupted.add(shnum)
 
-        return ([shares[shnum] for shnum in sorted(shares.keys())], corrupted)
-
-    def get_shares(self):
-        return defer.succeed(self.get_shares_synchronous())
+        valid = [shares[shnum] for shnum in sorted(shares.keys())]
+        return defer.succeed( (valid, corrupted) )
 
     def get_share(self, shnum):
         return get_disk_share(os.path.join(self._sharehomedir, str(shnum)),
