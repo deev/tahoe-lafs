@@ -525,9 +525,6 @@ class SystemTest(SystemTestMixin, RunBinTahoeMixin):
                 self.failUnlessIn("share_type: SDMF\n", output)
                 peerid = idlib.nodeid_b2a(self.clients[client_num].nodeid)
                 self.failUnlessIn(" WE for nodeid: %s\n" % peerid, output)
-                self.failUnlessIn(" num_extra_leases: 0\n", output)
-                if isinstance(self.clients[client_num], DiskBackend):
-                    self.failUnlessIn("  secrets are for nodeid: %s\n" % peerid, output)
                 self.failUnlessIn(" SDMF contents:\n", output)
                 self.failUnlessIn("  seqnum: 1\n", output)
                 self.failUnlessIn("  required_shares: 3\n", output)
