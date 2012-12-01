@@ -707,7 +707,9 @@ class Repairer(GridTestMixin, unittest.TestCase, RepairTestMixin,
             ss = self.g.servers_by_number[0]
             self.g.break_server(ss.get_serverid(), count=1)
 
-            shares = self.find_uri_shares(self.uri)
+            return self.find_uri_shares(self.uri)
+        d.addCallback(_then)
+        def _got_shares(shares):
             self.failUnlessEqual(len(shares), 10)
             self.delete_shares_numbered(self.uri, [9])
             return self.c0_filenode.check_and_repair(Monitor())
