@@ -6,6 +6,7 @@ from twisted.trial import unittest
 from twisted.application import service
 from twisted.internet import defer
 from foolscap.api import fireEventually
+from allmydata.util.deferredutil import gatherResults
 
 from allmydata.util import hashutil
 from allmydata.storage.server import StorageServer, si_b2a
@@ -113,52 +114,49 @@ class CrawlerTest(StallMixin, CrawlerTestMixin):
         server = self.create("test_service")
         aa = server.get_accountant().get_anonymous_account()
 
-        sis = [self.write(i, aa, self.serverid) for i in range(10)]
+        d = gatherResults([self.write(i, aa, self.serverid) for i in range(10)])
+        def _writes_done(sis):
+            statefile = os.path.join(self.basedir, "statefile")
+            c = EnumeratingCrawler(server.backend, statefile)
+            c.setServiceParent(self.s)
 
-        statefile = os.path.join(self.basedir, "statefile")
-        c = EnumeratingCrawler(server.backend, statefile)
-        c.setServiceParent(self.s)
-
-        # it should be legal to call get_state() and get_progress() right
-        # away, even before the first tick is performed. No work should have
-        # been done yet.
-        s = c.get_state()
-        p = c.get_progress()
-        self.failUnlessEqual(s["last-complete-prefix"], None)
-        self.failUnlessEqual(s["current-cycle"], None)
-        self.failUnlessEqual(p["cycle-in-progress"], False)
-
-        d = self._after_prefix(None, 'sg', c)
-        def _after_sg_prefix(state):
+            # it should be legal to call get_state() and get_progress() right
+            # away, even before the first tick is performed. No work should have
+            # been done yet.
+            s = c.get_state()
             p = c.get_progress()
-            self.failUnlessEqual(p["cycle-in-progress"], True)
-            pct = p["cycle-complete-percentage"]
-            # After the 'sg' prefix, we happen to be 76.17% complete and to
-            # have processed 6 sharesets. As long as we create shares in
-            # deterministic order, this will continue to be true.
-            self.failUnlessEqual(int(pct), 76)
-            self.failUnlessEqual(len(c.sharesets), 6)
+            self.failUnlessEqual(s["last-complete-prefix"], None)
+            self.failUnlessEqual(s["current-cycle"], None)
+            self.failUnlessEqual(p["cycle-in-progress"], False)
 
-            return c.set_hook('after_cycle')
-        d.addCallback(_after_sg_prefix)
+            d2 = self._after_prefix(None, 'sg', c)
+            def _after_sg_prefix(state):
+                p = c.get_progress()
+                self.failUnlessEqual(p["cycle-in-progress"], True)
+                pct = p["cycle-complete-percentage"]
+                # After the 'sg' prefix, we happen to be 76.17% complete and to
+                # have processed 6 sharesets. As long as we create shares in
+                # deterministic order, this will continue to be true.
+                self.failUnlessEqual(int(pct), 76)
+                self.failUnlessEqual(len(c.sharesets), 6)
 
-        def _after_first_cycle(ignored):
-            self.failUnlessEqual(sorted(sis), sorted(c.sharesets))
-        d.addCallback(_after_first_cycle)
-        d.addBoth(self._wait_for_yield, c)
+                return c.set_hook('after_cycle')
+            d2.addCallback(_after_sg_prefix)
 
-        # Check that a new crawler picks up on the state file correctly.
-        def _new_crawler(ign):
-            c2 = EnumeratingCrawler(server.backend, statefile)
-            c2.setServiceParent(self.s)
+            d2.addCallback(lambda ign: self.failUnlessEqual(sorted(sis), sorted(c.sharesets)))
+            d2.addBoth(self._wait_for_yield, c)
 
-            d2 = c2.set_hook('after_cycle')
-            def _after_first_cycle2(ignored):
-                self.failUnlessEqual(sorted(sis), sorted(c2.sharesets))
-            d2.addCallback(_after_first_cycle2)
-            d2.addBoth(self._wait_for_yield, c2)
-            return d2
-        d.addCallback(_new_crawler)
+            # Check that a new crawler picks up on the state file correctly.
+            def _new_crawler(ign):
+                c_new = EnumeratingCrawler(server.backend, statefile)
+                c_new.setServiceParent(self.s)
+
+                d3 = c_new.set_hook('after_cycle')
+                d3.addCallback(lambda ign: self.failUnlessEqual(sorted(sis), sorted(c_new.sharesets)))
+                d3.addBoth(self._wait_for_yield, c_new)
+                return d3
+            d2.addCallback(_new_crawler)
+        d.addCallback(_writes_done)
         return d
 
     def OFF_test_cpu_usage(self):
