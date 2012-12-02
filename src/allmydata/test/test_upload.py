@@ -11,7 +11,7 @@ import allmydata # for __full_version__
 from allmydata import uri, monitor, client
 from allmydata.immutable import upload, encode
 from allmydata.interfaces import FileTooLargeError, UploadUnhappinessError
-from allmydata.util import log, base32, fileutil
+from allmydata.util import base32, fileutil
 from allmydata.util.assertutil import precondition
 from allmydata.util.deferredutil import DeferredListShouldSucceed
 from allmydata.test.no_network import GridTestMixin
@@ -814,21 +814,17 @@ class EncodingParameters(GridTestMixin, unittest.TestCase, SetDEPMixin,
         h = self.g.clients[0].DEFAULT_ENCODING_PARAMETERS['happy']
         return is_happy_enough(servertoshnums, h, k)
 
+    # for compatibility, before we refactor this class to use the methods in GridTestMixin
     def _add_server(self, server_number, readonly=False):
-        assert self.g, "I tried to find a grid at self.g, but failed"
-        ss = self.g.make_server(server_number, readonly)
-        log.msg("just created a server, number: %s => %s" % (server_number, ss,))
-        self.g.add_server(server_number, ss)
+        return self.add_server(server_number, readonly=readonly)
 
-    def _add_server_with_share(self, server_number, share_number=None,
-                               readonly=False):
-        self._add_server(server_number, readonly)
-        if share_number is not None:
-            self._copy_share_to_server(share_number, server_number)
+    def _add_server_with_share(self, server_number, share_number=None, readonly=False):
+        self.add_server_with_share(self.uri, server_number=server_number,
+                                   share_number=share_number, readonly=readonly)
 
     def _copy_share_to_server(self, share_number, server_number):
-        ss = self.g.servers_by_number[server_number]
-        self.copy_share(self.shares[share_number], self.uri, ss)
+        self.copy_share_to_server(self.uri, server_number=server_number,
+                                  share_number=share_number)
 
     def _setup_grid(self):
         """

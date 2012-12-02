@@ -1,12 +1,10 @@
 
-import simplejson, os.path
+import simplejson
 
 from twisted.trial import unittest
 from twisted.internet import defer
 
-from allmydata.util import fileutil
 from allmydata import check_results, uri
-from allmydata import uri as tahoe_uri
 from allmydata.util import base32
 from allmydata.web import check_results as web_check_results
 from allmydata.storage_client import StorageFarmBroker, NativeStorageServer
@@ -317,32 +315,6 @@ class WebResultsRendering(unittest.TestCase, WebRenderingMixin):
 class BalancingAct(GridTestMixin, unittest.TestCase):
     # test for #1115 regarding the 'count-good-share-hosts' metric
 
-    def add_server(self, server_number, readonly=False):
-        assert self.g, "I tried to find a grid at self.g, but failed"
-        ss = self.g.make_server(server_number, readonly)
-        #log.msg("just created a server, number: %s => %s" % (server_number, ss,))
-        self.g.add_server(server_number, ss)
-
-    def add_server_with_share(self, server_number, uri, share_number=None,
-                              readonly=False):
-        self.add_server(server_number, readonly)
-        if share_number is not None:
-            self.copy_share_to_server(uri, share_number, server_number)
-
-    def copy_share_to_server(self, uri, shnum, server_number):
-        ss = self.g.servers_by_number[server_number]
-        # Copy share i from the directory associated with the first
-        # storage server to the directory associated with this one.
-        assert self.g, "I tried to find a grid at self.g, but failed"
-        assert self.shares, "I tried to find shares at self.shares, but failed"
-        old_sharefile = self.shares[shnum][2]
-        si = tahoe_uri.from_string(self.uri).get_storage_index()
-        new_sharedir = ss.backend.get_shareset(si)._get_sharedir()
-        fileutil.make_dirs(new_sharedir)
-        new_sharefile = os.path.join(new_sharedir, str(shnum))
-        if os.path.normpath(old_sharefile) != os.path.normpath(new_sharefile):
-            fileutil.move_into_place(old_sharefile, new_sharefile)
-
     def _print_pretty_shares_chart(self, res):
         # Servers are labeled A-Z, shares are labeled 0-9
         letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
@@ -381,14 +353,13 @@ class BalancingAct(GridTestMixin, unittest.TestCase):
             self.shares = shares
         d.addCallback(_store_shares)
 
-        def add_three(_, i):
-            # Add a new server with just share 3
-            self.add_server_with_share(i, self.uri, 3)
-        for i in range(1,5):
-            d.addCallback(add_three, i)
-            #d.addCallback(self._print_pretty_shares_chart)
-
-        def _check_and_repair(_):
+        def _layout(ign):
+            # Add servers with just share 3
+            for i in range(1, 5):
+                self.add_server_with_share(self.uri, server_number=i, share_number=3)
+        d.addCallback(_layout)
+        #d.addCallback(self._print_pretty_shares_chart)
+        def _check_and_repair(ign):
             d2 = self.imm.check_and_repair(Monitor())
             #d2.addCallback(self._print_pretty_shares_chart)
             return d2

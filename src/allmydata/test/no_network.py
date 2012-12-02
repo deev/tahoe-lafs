@@ -13,7 +13,8 @@
 # Tubs, so it is not useful for tests that involve a Helper, a KeyGenerator,
 # or the control.furl .
 
-import os.path
+import os.path, shutil
+
 from zope.interface import implements
 from twisted.application import service
 from twisted.internet import defer, reactor
@@ -25,7 +26,7 @@ from allmydata import uri as tahoe_uri
 from allmydata.client import Client
 from allmydata.storage.server import StorageServer
 from allmydata.storage.backends.disk.disk_backend import DiskBackend
-from allmydata.util import fileutil, idlib, hashutil
+from allmydata.util import fileutil, idlib, hashutil, log
 from allmydata.util.hashutil import sha1
 from allmydata.test.common_web import HTTPClientGETFactory
 from allmydata.interfaces import IStorageBroker, IServer
@@ -401,6 +402,22 @@ class GridTestMixin:
         d.addCallback(lambda ign: sorted(sharelist))
         return d
 
+    def add_server(self, server_number, readonly=False):
+        assert self.g, "I tried to find a grid at self.g, but failed"
+        ss = self.g.make_server(server_number, readonly)
+        log.msg("just created a server, number: %s => %s" % (server_number, ss,))
+        self.g.add_server(server_number, ss)
+
+    def add_server_with_share(self, uri, server_number, share_number=None,
+                              readonly=False):
+        self.add_server(server_number, readonly)
+        if share_number is not None:
+            self.copy_share_to_server(uri, server_number, share_number)
+
+    def copy_share_to_server(self, uri, server_number, share_number):
+        ss = self.g.servers_by_number[server_number]
+        self.copy_share(self.shares[share_number], uri, ss)
+
     def copy_shares(self, uri):
         shares = {}
         d = self.find_uri_shares(uri)
@@ -416,15 +433,17 @@ class GridTestMixin:
         si = tahoe_uri.from_string(uri).get_storage_index()
         (i_shnum, i_serverid, i_sharefile) = from_share
         shares_dir = to_server.backend.get_shareset(si)._get_sharedir()
+        new_sharefile = os.path.join(shares_dir, str(i_shnum))
         fileutil.make_dirs(shares_dir)
-        fileutil.move_into_place(i_sharefile, os.path.join(shares_dir, str(i_shnum)))
+        if os.path.normpath(i_sharefile) != os.path.normpath(new_sharefile):
+            shutil.copy(i_sharefile, new_sharefile)
 
     def restore_all_shares(self, shares):
         for sharefile, data in shares.items():
             fileutil.write(sharefile, data)
 
     def delete_share(self, (shnum, serverid, sharefile)):
-        os.unlink(sharefile)
+        fileutil.remove(sharefile)
 
     def delete_shares_numbered(self, uri, shnums):
         d = self.find_uri_shares(uri)
