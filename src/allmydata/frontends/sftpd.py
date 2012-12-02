@@ -24,8 +24,7 @@ from twisted.internet.interfaces import ITransport
 from twisted.internet import defer
 from twisted.internet.interfaces import IFinishableConsumer
 from foolscap.api import eventually
-from allmydata.util.deferredutil import eventually_callback, eventually_errback, \
-     eventual_chain, gatherResults
+from allmydata.util import deferredutil
 
 from allmydata.util.consumer import download_to_data
 from allmydata.interfaces import IFileNode, IDirectoryNode, ExistingChildError, \
@@ -54,6 +53,13 @@ else:  # pragma: no cover
             self.prefix = prefix
         def log(self, s, level=None):
             print "%r %s" % (self.prefix, s)
+
+
+def eventually_callback(d):
+    return lambda res: eventually(d.callback, res)
+
+def eventually_errback(d):
+    return lambda err: eventually(d.errback, err)
 
 
 def _utf8(x):
@@ -729,7 +735,9 @@ class GeneralSFTPFile(PrefixingLogMixin):
         def _read(ign):
             if noisy: self.log("_read in readChunk(%r, %r)" % (offset, length), level=NOISY)
             d2 = self.consumer.read(offset, length)
-            eventual_chain(d2, d)
+            d2.addCallbacks(eventually_callback(d), eventually_errback(d))
+            # It is correct to drop d2 here.
+            return None
         self.async.addCallbacks(_read, eventually_errback(d))
         d.addBoth(_convert_error, request)
         return d
@@ -839,7 +847,7 @@ class GeneralSFTPFile(PrefixingLogMixin):
         else:
             self.async.addCallback(_close)
 
-        eventual_chain(self.async, d)
+        self.async.addCallbacks(eventually_callback(d), eventually_errback(d))
         d.addBoth(_convert_error, request)
         return d
 
@@ -1434,8 +1442,8 @@ class SFTPUserHandler(ConchUser, PrefixingLogMixin):
         to_userpath = self._path_to_utf8(to_path)
 
         # the target directory must already exist
-        d = gatherResults([self._get_parent_or_node(from_path),
-                           self._get_parent_or_node(to_path)])
+        d = deferredutil.gatherResults([self._get_parent_or_node(from_path),
+                                        self._get_parent_or_node(to_path)])
         def _got( (from_pair, to_pair) ):
             if noisy: self.log("_got( (%r, %r) ) in .renameFile(%r, %r, overwrite=%r)" %
                                (from_pair, to_pair, from_pathstring, to_pathstring, overwrite), level=NOISY)
