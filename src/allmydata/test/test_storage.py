@@ -21,14 +21,13 @@ from allmydata.storage.backends.null.null_backend import NullBackend
 from allmydata.storage.backends.disk.disk_backend import DiskBackend
 from allmydata.storage.backends.disk.immutable import load_immutable_disk_share, \
      create_immutable_disk_share, ImmutableDiskShare
-from allmydata.storage.backends.disk.mutable import MutableDiskShare
+from allmydata.storage.backends.disk.mutable import create_mutable_disk_share, MutableDiskShare
 from allmydata.storage.backends.cloud.cloud_backend import CloudBackend
 from allmydata.storage.backends.cloud import mock_cloud, cloud_common
 from allmydata.storage.backends.cloud.mock_cloud import MockContainer, MockServiceError, \
      ContainerItem, ContainerListing
 from allmydata.storage.bucket import BucketWriter, BucketReader
-from allmydata.storage.common import DataTooLargeError, storage_index_to_dir, NUM_RE, PREFIX, \
-     UnknownMutableContainerVersionError, UnknownImmutableContainerVersionError
+from allmydata.storage.common import DataTooLargeError, storage_index_to_dir
 from allmydata.storage.leasedb import SHARETYPE_IMMUTABLE, SHARETYPE_MUTABLE
 from allmydata.storage.expiration import ExpirationPolicy
 from allmydata.immutable.layout import WriteBucketProxy, WriteBucketProxy_v2, \
@@ -41,7 +40,7 @@ from allmydata.mutable.layout import MDMFSlotWriteProxy, MDMFSlotReadProxy, \
                                      SIGNATURE_SIZE, \
                                      VERIFICATION_KEY_SIZE, \
                                      SHARE_HASH_CHAIN_SIZE
-from allmydata.interfaces import BadWriteEnablerError
+from allmydata.interfaces import BadWriteEnablerError, RIStorageServer
 from allmydata.test.common import LoggingServiceParent, ShouldFailMixin, CrawlerTestMixin, \
      FakeCanary
 from allmydata.test.common_util import ReallyEqualMixin
@@ -247,7 +246,7 @@ class BucketProxy(BucketTestMixin, unittest.TestCase):
         uri_extension = "s" + "E"*498 + "e"
 
         d = self.make_bucket(name, sharesize)
-        def _made_bucket( (bw, rb, sharefp) ):
+        def _made_bucket( (bw, rb, sharefile) ):
             bp = wbp_class(rb, None,
                            data_size=95,
                            block_size=25,
@@ -266,13 +265,13 @@ class BucketProxy(BucketTestMixin, unittest.TestCase):
             d2.addCallback(lambda ign: bp.put_uri_extension(uri_extension))
             d2.addCallback(lambda ign: bp.close())
 
-            d2.addCallback(lambda ign: load_immutable_disk_share(sharefp))
+            d2.addCallback(lambda ign: load_immutable_disk_share(sharefile))
             return d2
         d.addCallback(_made_bucket)
 
         # now read everything back
         def _start_reading(share):
-            br = BucketReader(account, share)
+            br = BucketReader(FakeAccount(), share)
             rb = RemoteBucket()
             rb.target = br
             server = NoNetworkServer("abc", None)
@@ -438,7 +437,9 @@ class ServerMixin:
 
 class ServerTest(ServerMixin, ShouldFailMixin):
     def test_create(self):
-        self.create("test_create")
+        server = self.create("test_create")
+        aa = server.get_accountant().get_anonymous_account()
+        self.failUnless(isinstance(aa, RIStorageServer))
 
     def test_declares_fixed_1528(self):
         server = self.create("test_declares_fixed_1528")
@@ -506,10 +507,10 @@ class ServerTest(ServerMixin, ShouldFailMixin):
 
         def _write_and_get_children( (already, writers) ):
             d = for_items(self._write_and_close, writers)
-            d.addCallback(lambda ign: sorted(fileutil.listdir(storedir, filter=PREFIX)))
+            d.addCallback(lambda ign: sorted(fileutil.listdir(storedir)))
             return d
 
-        d = self.allocate(ss, "storageindex", [0], 25)
+        d = self.allocate(aa, "storageindex", [0], 25)
         d.addCallback(_write_and_get_children)
 
         def _got_children(children_of_storedir):
@@ -576,121 +577,208 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         for i,wb in writers.items():
             wb.remote_abort()
 
-    def OFF_test_bad_container_version(self):
-        server = self.create("test_bad_container_version")
-        aa = server.get_accountant().get_anonymous_account()
+    # The following share file content was generated with
+    # storage.immutable.ShareFile from Tahoe-LAFS v1.8.2
+    # with share data == 'a'. The total size of this input
+    # is 85 bytes.
+    shareversionnumber = '\x00\x00\x00\x01'
+    sharedatalength = '\x00\x00\x00\x01'
+    numberofleases = '\x00\x00\x00\x01'
+    shareinputdata = 'a'
+    ownernumber = '\x00\x00\x00\x00'
+    renewsecret  = 'x'*32
+    cancelsecret = 'y'*32
+    expirationtime = '\x00(\xde\x80'
+    nextlease = ''
+    containerdata = shareversionnumber + sharedatalength + numberofleases
+    client_data = (shareinputdata + ownernumber + renewsecret +
+                   cancelsecret + expirationtime + nextlease)
+    share_data = containerdata + client_data
+    testnodeid = 'testnodeidxxxxxxxxxx'
 
-        a,w = self.allocate(aa, "si1", [0], 10)
-        w[0].remote_write(0, "\xff"*10)
-        w[0].remote_close()
-
-        fn = os.path.join(server.sharedir, storage_index_to_dir("si1"), "0")
-        f = open(fn, "rb+")
-        f.seek(0)
-        f.write(struct.pack(">L", 0)) # this is invalid: minimum used is v1
-        f.close()
-
-        aa.remote_get_buckets("allocate")
-
-        e = self.failUnlessRaises(UnknownImmutableContainerVersionError,
-                                  aa.remote_get_buckets, "si1")
-        self.failUnlessIn(" had version 0 but we wanted 1", str(e))
-
-    def test_disconnect(self):
-        # simulate a disconnection
-        server = self.create("test_disconnect")
+    def test_write_and_read_share(self):
+        """
+        Write a new share, read it, and test the server and backends'
+        handling of simultaneous and successive attempts to write the same
+        share.
+        """
+        server = self.create("test_write_and_read_share")
         aa = server.get_accountant().get_anonymous_account()
         canary = FakeCanary()
 
-        d = self.allocate(aa, "disconnect", [0,1,2], 75, canary)
-        def _allocated( (already, writers) ):
-            self.failUnlessEqual(already, set())
-            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
-            for (f,args,kwargs) in canary.disconnectors.values():
-                f(*args, **kwargs)
-        d.addCallback(_allocated)
+        shareset = aa.backend.get_shareset('teststorage_index')
+        self.failIf(shareset.has_incoming(0))
 
-        # returning from _allocated ought to delete the incoming shares
-        d.addCallback(lambda ign: self.allocate(aa, "disconnect", [0,1,2], 75))
-        def _allocated2( (already, writers) ):
-            self.failUnlessEqual(already, set())
-            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
-        d.addCallback(_allocated2)
+        # Populate incoming with the sharenum: 0.
+        d = aa.remote_allocate_buckets('teststorage_index', 'x'*32, 'y'*32, frozenset((0,)), 1, canary)
+        def _allocated( (already, writers) ):
+            # This is a white-box test: Inspect incoming and fail unless the sharenum: 0 is listed there.
+            self.failUnless(shareset.has_incoming(0))
+
+            # Attempt to create a second share writer with the same sharenum.
+            d2 = aa.remote_allocate_buckets('teststorage_index', 'x'*32, 'y'*32, frozenset((0,)), 1, canary)
+
+            # Show that no sharewriter results from a remote_allocate_buckets
+            # with the same si and sharenum, until BucketWriter.remote_close()
+            # has been called.
+            d2.addCallback(lambda (already2, writers2): self.failIf(writers2))
+
+            # Test allocated size.
+            d2.addCallback(lambda ign: aa.allocated_size())
+            d2.addCallback(lambda space: self.failUnlessEqual(space, 1))
+
+            # Write 'a' to shnum 0. Only tested together with close and read.
+            d2.addCallback(lambda ign: writers[0].remote_write(0, 'a'))
+
+            # Preclose: Inspect final, failUnless nothing there.
+            d2.addCallback(lambda ign: aa.backend.get_shareset('teststorage_index').get_shares())
+            def _check( (shares, corrupted) ):
+                self.failUnlessEqual(len(shares), 0, str(shares))
+                self.failUnlessEqual(len(corrupted), 0, str(corrupted))
+            d2.addCallback(_check)
+
+            d2.addCallback(lambda ign: writers[0].remote_close())
+
+            # Postclose: fail unless written data is in final.
+            d2.addCallback(lambda ign: aa.backend.get_shareset('teststorage_index').get_shares())
+            def _got_shares( (sharesinfinal, corrupted) ):
+                self.failUnlessEqual(len(sharesinfinal), 1, str(sharesinfinal))
+                self.failUnlessEqual(len(corrupted), 0, str(corrupted))
+
+                d3 = defer.succeed(None)
+                d3.addCallback(lambda ign: sharesinfinal[0].read_share_data(0, 73))
+                d3.addCallback(lambda contents: self.failUnlessEqual(contents, self.shareinputdata))
+                return d3
+            d2.addCallback(_got_shares)
+
+            # Exercise the case that the share we're asking to allocate is
+            # already (completely) uploaded.
+            d2.addCallback(lambda ign: aa.remote_allocate_buckets('teststorage_index',
+                                                                  'x'*32, 'y'*32, set((0,)), 1, canary))
+            return d2
+        d.addCallback(_allocated)
         return d
 
-    @mock.patch('allmydata.util.fileutil.get_disk_stats')
-    def test_reserved_space(self, mock_get_disk_stats):
-        reserved_space=10000
-        mock_get_disk_stats.return_value = {
-            'free_for_nonroot': 15000,
-            'avail': max(15000 - reserved_space, 0),
-            }
-
-        server = self.create("test_reserved_space", reserved_space=reserved_space)
+    def test_read_old_share(self):
+        """
+        This tests whether the code correctly finds and reads shares written out by
+        pre-pluggable-backends (Tahoe-LAFS <= v1.8.2) servers. There is a similar test
+        in test_download, but that one is from the perspective of the client and exercises
+        a deeper stack of code. This one is for exercising just the StorageServer and backend.
+        """
+        server = self.create("test_read_old_share")
         aa = server.get_accountant().get_anonymous_account()
 
-        # 15k available, 10k reserved, leaves 5k for shares
+        # Contruct a file with the appropriate contents.
+        datalen = len(self.share_data)
+        sharedir = server.backend.get_shareset('teststorage_index')._get_sharedir()
+        fileutil.make_dirs(sharedir)
+        fileutil.write(os.path.join(sharedir, "0"), self.share_data)
 
-        # a newly created and filled share incurs this much overhead, beyond
-        # the size we request.
-        OVERHEAD = 3*4
-        LEASE_SIZE = 4+32+32+4
-        canary = FakeCanary(True)
+        # Now begin the test.
+        d = aa.remote_get_buckets('teststorage_index')
+        def _got_buckets(bs):
+            self.failUnlessEqual(len(bs), 1)
+            self.failUnlessIn(0, bs)
+            b = bs[0]
 
-        d = self.allocate(aa, "vid1", [0,1,2], 1000, canary)
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: b.remote_read(0, datalen))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, self.shareinputdata))
+
+            # If you try to read past the end you get as much input data as is there.
+            d2.addCallback(lambda ign: b.remote_read(0, datalen+20))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, self.shareinputdata))
+
+            # If you start reading past the end of the file you get the empty string.
+            d2.addCallback(lambda ign: b.remote_read(datalen+1, 3))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, ''))
+            return d2
+        d.addCallback(_got_buckets)
+        return d
+
+    def test_bad_container_version(self):
+        server = self.create("test_bad_container_version")
+        aa = server.get_accountant().get_anonymous_account()
+
+        d = self.allocate(aa, "allocate", [0,1], 20)
         def _allocated( (already, writers) ):
-            self.failUnlessEqual(len(writers), 3)
-            # now the StorageServer should have 3000 bytes provisionally
-            # allocated, allowing only 2000 more to be claimed
-            self.failUnlessEqual(len(server._active_writers), 3)
-            self.writers = writers
-            del already
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: writers[0].remote_write(0, "\xff"*10))
+            d2.addCallback(lambda ign: writers[0].remote_close())
+            d2.addCallback(lambda ign: writers[1].remote_write(1, "\xaa"*10))
+            d2.addCallback(lambda ign: writers[1].remote_close())
+            return d2
+        d.addCallback(_allocated)
 
-            # allocating 1001-byte shares only leaves room for one
-            d2 = self.allocate(aa, "vid2", [0,1,2], 1001, canary)
-            def _allocated2( (already2, writers2) ):
-                self.failUnlessEqual(len(writers2), 1)
-                self.failUnlessEqual(len(server._active_writers), 4)
+        d.addCallback(lambda ign: aa.backend.get_shareset("allocate").get_share(0))
+        def _write_invalid_version(share0):
+            f = open(share0._get_path(), "rb+")
+            try:
+                f.seek(0)
+                f.write(struct.pack(">L", 0)) # this is invalid: minimum used is v1
+            finally:
+                f.close()
+        d.addCallback(_write_invalid_version)
 
-                # we abandon the first set, so their provisional allocation should be
-                # returned
-                d3 = for_items(self._abort_writer, self.writers)
-                #def _del_writers(ign):
-                #    del self.writers
-                #d3.addCallback(_del_writers)
-                d3.addCallback(lambda ign: self.failUnlessEqual(len(server._active_writers), 1))
+        # This should ignore the corrupted share; see ticket #1566.
+        d.addCallback(lambda ign: aa.remote_get_buckets("allocate"))
+        d.addCallback(lambda b: self.failUnlessEqual(set(b.keys()), set([1])))
 
-                # and we close the second set, so their provisional allocation should
-                # become real, long-term allocation, and grows to include the
-                # overhead.
-                d3.addCallback(lambda ign: for_items(self._write_and_close, writers2))
-                d3.addCallback(lambda ign: self.failUnlessEqual(len(server._active_writers), 0))
-                return d3
-            d2.addCallback(_allocated2)
+        # Also if there are only corrupted shares.
+        d.addCallback(lambda ign: aa.backend.get_shareset("allocate").get_share(1))
+        d.addCallback(lambda share: share.unlink())
+        d.addCallback(lambda ign: aa.remote_get_buckets("allocate"))
+        d.addCallback(lambda b: self.failUnlessEqual(b, {}))
+        return d
 
-            allocated = 1001 + OVERHEAD + LEASE_SIZE
+    def test_advise_corruption(self):
+        server = self.create("test_advise_corruption")
+        aa = server.get_accountant().get_anonymous_account()
 
-            # we have to manually increase available, since we're not doing real
-            # disk measurements
-            def _mock(ign):
-                mock_get_disk_stats.return_value = {
-                    'free_for_nonroot': 15000 - allocated,
-                    'avail': max(15000 - allocated - reserved_space, 0),
-                    }
-            d2.addCallback(_mock)
+        si0_s = base32.b2a("si0")
+        aa.remote_advise_corrupt_share("immutable", "si0", 0,
+                                       "This share smells funny.\n")
+        reportdir = os.path.join(aa._statedir, "corruption-advisories")
+        self.failUnless(os.path.exists(reportdir), reportdir)
+        reports = fileutil.listdir(reportdir)
+        self.failUnlessEqual(len(reports), 1)
+        report_si0 = reports[0]
+        self.failUnlessIn(si0_s, str(report_si0))
+        report = fileutil.read(os.path.join(reportdir, report_si0))
 
-            # now there should be ALLOCATED=1001+12+72=1085 bytes allocated, and
-            # 5000-1085=3915 free, therefore we can fit 39 100byte shares
-            d2.addCallback(lambda ign: self.allocate(aa, "vid3", range(100), 100, canary))
-            def _allocated3( (already3, writers3) ):
-                self.failUnlessEqual(len(writers3), 39)
-                self.failUnlessEqual(len(server._active_writers), 39)
+        self.failUnlessIn("type: immutable", report)
+        self.failUnlessIn("storage_index: %s" % si0_s, report)
+        self.failUnlessIn("share_number: 0", report)
+        self.failUnlessIn("This share smells funny.", report)
 
-                d3 = for_items(self._abort_writer, writers3)
-                d3.addCallback(lambda ign: self.failUnlessEqual(len(server._active_writers), 0))
-                d3.addCallback(lambda ign: server.disownServiceParent())
-                return d3
-            d2.addCallback(_allocated3)
+        # test the RIBucketWriter version too
+        si1_s = base32.b2a("si1")
+        d = self.allocate(aa, "si1", [1], 75)
+        def _allocated( (already, writers) ):
+            self.failUnlessEqual(already, set())
+            self.failUnlessEqual(set(writers.keys()), set([1]))
+
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: writers[1].remote_write(0, "data"))
+            d2.addCallback(lambda ign: writers[1].remote_close())
+
+            d2.addCallback(lambda ign: aa.remote_get_buckets("si1"))
+            def _got_buckets(b):
+                self.failUnlessEqual(set(b.keys()), set([1]))
+                b[1].remote_advise_corrupt_share("This share tastes like dust.\n")
+
+                reports = fileutil.listdir(reportdir)
+                self.failUnlessEqual(len(reports), 2)
+                report_si1 = [r for r in reports if si1_s in r][0]
+                report = fileutil.read(os.path.join(reportdir, report_si1))
+
+                self.failUnlessIn("type: immutable", report)
+                self.failUnlessIn("storage_index: %s" % (si1_s,), report)
+                self.failUnlessIn("share_number: 1", report)
+                self.failUnlessIn("This share tastes like dust.", report)
+            d2.addCallback(_got_buckets)
+            return d2
         d.addCallback(_allocated)
         return d
 
@@ -760,72 +848,11 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         sa.remote_renew_lease("si1", "")
         self.compare_leases(all_leases2, sa.get_leases("si1"), with_timestamps=False)
 
-    def OFF_test_readonly(self):
-        workdir = self.workdir("test_readonly")
-        server = StorageServer(workdir, "\x00" * 20, readonly_storage=True)
-        server.setServiceParent(self.sparent)
-        aa = server.get_accountant().get_anonymous_account()
 
-        already,writers = self.allocate(aa, "vid", [0,1,2], 75)
-        self.failUnlessEqual(already, set())
-        self.failUnlessEqual(writers, {})
-
-        stats = server.get_stats()
-        self.failUnlessEqual(stats["storage_server.accepting_immutable_shares"], 0)
-        if "storage_server.disk_avail" in stats:
-            # Some platforms may not have an API to get disk stats.
-            # But if there are stats, readonly_storage means disk_avail=0
-            self.failUnlessEqual(stats["storage_server.disk_avail"], 0)
-
-    def OFF_test_advise_corruption(self):
-        workdir = self.workdir("test_advise_corruption")
-        server = StorageServer(workdir, "\x00" * 20)
-        server.setServiceParent(self.sparent)
-        aa = server.get_accountant().get_anonymous_account()
-
-        si0_s = base32.b2a("si0")
-        aa.remote_advise_corrupt_share("immutable", "si0", 0,
-                                       "This share smells funny.\n")
-        reportdir = os.path.join(workdir, "corruption-advisories")
-        reports = os.listdir(reportdir)
-        self.failUnlessEqual(len(reports), 1)
-        report_si0 = reports[0]
-        self.failUnlessIn(si0_s, report_si0)
-        f = open(os.path.join(reportdir, report_si0), "r")
-        report = f.read()
-        f.close()
-        self.failUnlessIn("type: immutable", report)
-        self.failUnlessIn("storage_index: %s" % si0_s, report)
-        self.failUnlessIn("share_number: 0", report)
-        self.failUnlessIn("This share smells funny.", report)
-
-        # test the RIBucketWriter version too
-        si1_s = base32.b2a("si1")
-        already,writers = self.allocate(aa, "si1", [1], 75)
-        self.failUnlessEqual(already, set())
-        self.failUnlessEqual(set(writers.keys()), set([1]))
-        writers[1].remote_write(0, "data")
-        writers[1].remote_close()
-
-        b = aa.remote_get_buckets("si1")
-        self.failUnlessEqual(set(b.keys()), set([1]))
-        b[1].remote_advise_corrupt_share("This share tastes like dust.\n")
-
-        reports = os.listdir(reportdir)
-        self.failUnlessEqual(len(reports), 2)
-        report_si1 = [r for r in reports if si1_s in r][0]
-        f = open(os.path.join(reportdir, report_si1), "r")
-        report = f.read()
-        f.close()
-        self.failUnlessIn("type: immutable", report)
-        self.failUnlessIn("storage_index: %s" % si1_s, report)
-        self.failUnlessIn("share_number: 1", report)
-        self.failUnlessIn("This share tastes like dust.", report)
-
-
-class MutableServer(unittest.TestCase):
+class MutableServerMixin:
     def setUp(self):
         self.sparent = LoggingServiceParent()
+        self.sparent.startService()
         self._lease_secret = itertools.count()
 
     def tearDown(self):
@@ -833,18 +860,7 @@ class MutableServer(unittest.TestCase):
 
 
     def workdir(self, name):
-        basedir = os.path.join("storage", "MutableServer", name)
-        return basedir
-
-    def create(self, name):
-        workdir = self.workdir(name)
-        server = StorageServer(workdir, "\x00" * 20)
-        server.setServiceParent(self.sparent)
-        return server
-
-    def test_create(self):
-        self.create("test_create")
-
+        return os.path.join("storage", self.__class__.__name__, name)
 
     def write_enabler(self, we_tag):
         return hashutil.tagged_hash("we_blah", we_tag)
@@ -855,89 +871,114 @@ class MutableServer(unittest.TestCase):
     def cancel_secret(self, tag):
         return hashutil.tagged_hash("cancel_blah", str(tag))
 
-    def allocate(self, aa, storage_index, we_tag, lease_tag, sharenums, size):
+    def allocate(self, aa, storage_index, we_tag, sharenums, size):
         write_enabler = self.write_enabler(we_tag)
+
+        # These secrets are not used, but clients still provide them.
+        lease_tag = "%d" % (self._lease_secret.next(),)
         renew_secret = self.renew_secret(lease_tag)
         cancel_secret = self.cancel_secret(lease_tag)
+
         rstaraw = aa.remote_slot_testv_and_readv_and_writev
         testandwritev = dict( [ (shnum, ([], [], None) )
-                         for shnum in sharenums ] )
+                                for shnum in sharenums ] )
         readv = []
-        rc = rstaraw(storage_index,
-                     (write_enabler, renew_secret, cancel_secret),
-                     testandwritev,
-                     readv)
-        (did_write, readv_data) = rc
-        self.failUnless(did_write)
-        self.failUnless(isinstance(readv_data, dict))
-        self.failUnlessEqual(len(readv_data), 0)
 
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: rstaraw(storage_index,
+                                          (write_enabler, renew_secret, cancel_secret),
+                                          testandwritev,
+                                          readv))
+        def _check( (did_write, readv_data) ):
+            self.failUnless(did_write)
+            self.failUnless(isinstance(readv_data, dict))
+            self.failUnlessEqual(len(readv_data), 0)
+        d.addCallback(_check)
+        return d
+
+
+class MutableServerTest(MutableServerMixin, ShouldFailMixin):
+    def test_create(self):
+        server = self.create("test_create")
+        aa = server.get_accountant().get_anonymous_account()
+        self.failUnless(isinstance(aa, RIStorageServer))
 
     def test_bad_magic(self):
         server = self.create("test_bad_magic")
         aa = server.get_accountant().get_anonymous_account()
-
-        self.allocate(aa, "si1", "we1", self._lease_secret.next(), set([0]), 10)
-        fn = os.path.join(server.sharedir, storage_index_to_dir("si1"), "0")
-        f = open(fn, "rb+")
-        f.seek(0)
-        f.write("BAD MAGIC")
-        f.close()
         read = aa.remote_slot_readv
-        e = self.failUnlessRaises(UnknownMutableContainerVersionError,
-                                  read, "si1", [0], [(0,10)])
-        self.failUnlessIn(" had magic ", str(e))
-        self.failUnlessIn(" but we wanted ", str(e))
+
+        d = self.allocate(aa, "si1", "we1", set([0,1]), 10)
+        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_share(0))
+        def _got_share(share0):
+            f = open(share0._get_path(), "rb+")
+            try:
+                f.seek(0)
+                f.write("BAD MAGIC")
+            finally:
+                f.close()
+        d.addCallback(_got_share)
+
+        # This should ignore the corrupted share; see ticket #1566.
+        d.addCallback(lambda ign: read("si1", [0,1], [(0,10)]) )
+        d.addCallback(lambda res: self.failUnlessEqual(res, {1: ['']}))
+
+        # Also if there are only corrupted shares.
+        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_share(1))
+        d.addCallback(lambda share: share.unlink())
+        d.addCallback(lambda ign: read("si1", [0], [(0,10)]) )
+        d.addCallback(lambda res: self.failUnlessEqual(res, {}))
+        return d
 
     def test_container_size(self):
         server = self.create("test_container_size")
         aa = server.get_accountant().get_anonymous_account()
-
-        self.allocate(aa, "si1", "we1", self._lease_secret.next(),
-                      set([0,1,2]), 100)
         read = aa.remote_slot_readv
         rstaraw = aa.remote_slot_testv_and_readv_and_writev
         secrets = ( self.write_enabler("we1"),
                     self.renew_secret("we1"),
                     self.cancel_secret("we1") )
         data = "".join([ ("%d" % i) * 10 for i in range(10) ])
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [(0,data)], len(data)+12)},
-                         [])
-        self.failUnlessEqual(answer, (True, {0:[],1:[],2:[]}) )
+
+        d = self.allocate(aa, "si1", "we1", set([0,1,2]), 100)
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [(0,data)], len(data)+12)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
 
         # Trying to make the container too large (by sending a write vector
         # whose offset is too high) will raise an exception.
         TOOBIG = MutableDiskShare.MAX_SIZE + 10
-        self.failUnlessRaises(DataTooLargeError,
-                              rstaraw, "si1", secrets,
-                              {0: ([], [(TOOBIG,data)], None)},
-                              [])
+        d.addCallback(lambda ign: self.shouldFail(DataTooLargeError,
+                                                  'make container too large', None,
+                                                  lambda: rstaraw("si1", secrets,
+                                                                  {0: ([], [(TOOBIG,data)], None)},
+                                                                  []) ))
 
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [(0,data)], None)},
-                         [])
-        self.failUnlessEqual(answer, (True, {0:[],1:[],2:[]}) )
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [(0,data)], None)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
 
-        read_answer = read("si1", [0], [(0,10)])
-        self.failUnlessEqual(read_answer, {0: [data[:10]]})
+        d.addCallback(lambda ign: read("si1", [0], [(0,10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data[:10]]}))
 
         # Sending a new_length shorter than the current length truncates the
         # data.
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [], 9)},
-                         [])
-        read_answer = read("si1", [0], [(0,10)])
-        self.failUnlessEqual(read_answer, {0: [data[:9]]})
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [], 9)},
+                                          []))
+        d.addCallback(lambda ign: read("si1", [0], [(0,10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data[:9]]}))
 
         # Sending a new_length longer than the current length doesn't change
         # the data.
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [], 20)},
-                         [])
-        assert answer == (True, {0:[],1:[],2:[]})
-        read_answer = read("si1", [0], [(0, 20)])
-        self.failUnlessEqual(read_answer, {0: [data[:9]]})
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [], 20)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
+        d.addCallback(lambda ign: read("si1", [0], [(0, 20)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data[:9]]}))
 
         # Sending a write vector whose start is after the end of the current
         # data doesn't reveal "whatever was there last time" (palimpsest),
@@ -945,120 +986,119 @@ class MutableServer(unittest.TestCase):
 
         # To test this, we fill the data area with a recognizable pattern.
         pattern = ''.join([chr(i) for i in range(100)])
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [(0, pattern)], None)},
-                         [])
-        assert answer == (True, {0:[],1:[],2:[]})
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [(0, pattern)], None)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
         # Then truncate the data...
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [], 20)},
-                         [])
-        assert answer == (True, {0:[],1:[],2:[]})
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [], 20)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
         # Just confirm that you get an empty string if you try to read from
         # past the (new) endpoint now.
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [], None)},
-                         [(20, 1980)])
-        self.failUnlessEqual(answer, (True, {0:[''],1:[''],2:['']}))
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [], None)},
+                                          [(20, 1980)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[''],1:[''],2:['']}) ))
 
         # Then the extend the file by writing a vector which starts out past
         # the end...
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [(50, 'hellothere')], None)},
-                         [])
-        assert answer == (True, {0:[],1:[],2:[]})
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [(50, 'hellothere')], None)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
         # Now if you read the stuff between 20 (where we earlier truncated)
         # and 50, it had better be all zeroes.
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [], None)},
-                         [(20, 30)])
-        self.failUnlessEqual(answer, (True, {0:['\x00'*30],1:[''],2:['']}))
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [], None)},
+                                          [(20, 30)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:['\x00'*30],1:[''],2:['']}) ))
 
         # Also see if the server explicitly declares that it supports this
         # feature.
-        ver = aa.remote_get_version()
-        storage_v1_ver = ver["http://allmydata.org/tahoe/protocols/storage/v1"]
-        self.failUnless(storage_v1_ver.get("fills-holes-with-zero-bytes"))
+        d.addCallback(lambda ign: aa.remote_get_version())
+        def _check_declaration(ver):
+            storage_v1_ver = ver["http://allmydata.org/tahoe/protocols/storage/v1"]
+            self.failUnless(storage_v1_ver.get("fills-holes-with-zero-bytes"))
+        d.addCallback(_check_declaration)
 
         # If the size is dropped to zero the share is deleted.
-        answer = rstaraw("si1", secrets,
-                         {0: ([], [(0,data)], 0)},
-                         [])
-        self.failUnlessEqual(answer, (True, {0:[],1:[],2:[]}) )
+        d.addCallback(lambda ign: rstaraw("si1", secrets,
+                                          {0: ([], [(0,data)], 0)},
+                                          []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
 
-        read_answer = read("si1", [0], [(0,10)])
-        self.failUnlessEqual(read_answer, {})
+        d.addCallback(lambda ign: read("si1", [0], [(0,10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {}))
+        return d
 
     def test_allocate(self):
         server = self.create("test_allocate")
         aa = server.get_accountant().get_anonymous_account()
-
-        self.allocate(aa, "si1", "we1", self._lease_secret.next(),
-                      set([0,1,2]), 100)
-
         read = aa.remote_slot_readv
-        self.failUnlessEqual(read("si1", [0], [(0, 10)]),
-                             {0: [""]})
-        self.failUnlessEqual(read("si1", [], [(0, 10)]),
-                             {0: [""], 1: [""], 2: [""]})
-        self.failUnlessEqual(read("si1", [0], [(100, 10)]),
-                             {0: [""]})
+        write = aa.remote_slot_testv_and_readv_and_writev
+
+        d = self.allocate(aa, "si1", "we1", set([0,1,2]), 100)
+
+        d.addCallback(lambda ign: read("si1", [0], [(0, 10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [""]}))
+        d.addCallback(lambda ign: read("si1", [], [(0, 10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [""], 1: [""], 2: [""]}))
+        d.addCallback(lambda ign: read("si1", [0], [(100, 10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [""]}))
 
         # try writing to one
         secrets = ( self.write_enabler("we1"),
                     self.renew_secret("we1"),
                     self.cancel_secret("we1") )
         data = "".join([ ("%d" % i) * 10 for i in range(10) ])
-        write = aa.remote_slot_testv_and_readv_and_writev
-        answer = write("si1", secrets,
-                       {0: ([], [(0,data)], None)},
-                       [])
-        self.failUnlessEqual(answer, (True, {0:[],1:[],2:[]}) )
 
-        self.failUnlessEqual(read("si1", [0], [(0,20)]),
-                             {0: ["00000000001111111111"]})
-        self.failUnlessEqual(read("si1", [0], [(95,10)]),
-                             {0: ["99999"]})
-        #self.failUnlessEqual(s0.remote_get_length(), 100)
+        d.addCallback(lambda ign: write("si1", secrets,
+                                        {0: ([], [(0,data)], None)},
+                                        []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {0:[],1:[],2:[]}) ))
+
+        d.addCallback(lambda ign: read("si1", [0], [(0,20)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: ["00000000001111111111"]}))
+        d.addCallback(lambda ign: read("si1", [0], [(95,10)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: ["99999"]}))
+        #d.addCallback(lambda ign: s0.remote_get_length())
+        #d.addCallback(lambda res: self.failUnlessEqual(res, 100))
 
         bad_secrets = ("bad write enabler", secrets[1], secrets[2])
-        f = self.failUnlessRaises(BadWriteEnablerError,
-                                  write, "si1", bad_secrets,
-                                  {}, [])
-        self.failUnlessIn("The write enabler was recorded by nodeid 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'.", f)
+        d.addCallback(lambda ign: self.shouldFail(BadWriteEnablerError, 'bad write enabler',
+                                                  "The write enabler was recorded by nodeid "
+                                                  "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'.",
+                                                  lambda: write("si1", bad_secrets, {}, []) ))
 
         # this testv should fail
-        answer = write("si1", secrets,
-                       {0: ([(0, 12, "eq", "444444444444"),
-                             (20, 5, "eq", "22222"),
-                             ],
-                            [(0, "x"*100)],
-                            None),
-                        },
-                       [(0,12), (20,5)],
-                       )
-        self.failUnlessEqual(answer, (False,
-                                      {0: ["000000000011", "22222"],
-                                       1: ["", ""],
-                                       2: ["", ""],
-                                       }))
-        self.failUnlessEqual(read("si1", [0], [(0,100)]), {0: [data]})
+        d.addCallback(lambda ign: write("si1", secrets,
+                                        {0: ([(0, 12, "eq", "444444444444"),
+                                              (20, 5, "eq", "22222"),],
+                                             [(0, "x"*100)],
+                                             None)},
+                                        [(0,12), (20,5)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (False,
+                                                             {0: ["000000000011", "22222"],
+                                                              1: ["", ""],
+                                                              2: ["", ""]}) ))
+        d.addCallback(lambda ign: read("si1", [0], [(0,100)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data]}))
 
         # as should this one
-        answer = write("si1", secrets,
-                       {0: ([(10, 5, "lt", "11111"),
-                             ],
-                            [(0, "x"*100)],
-                            None),
-                        },
-                       [(10,5)],
-                       )
-        self.failUnlessEqual(answer, (False,
-                                      {0: ["11111"],
-                                       1: [""],
-                                       2: [""]},
-                                      ))
-        self.failUnlessEqual(read("si1", [0], [(0,100)]), {0: [data]})
+        d.addCallback(lambda ign: write("si1", secrets,
+                                        {0: ([(10, 5, "lt", "11111"),],
+                                             [(0, "x"*100)],
+                                             None)},
+                                        [(10,5)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (False,
+                                                             {0: ["11111"],
+                                                              1: [""],
+                                                              2: [""]}) ))
+        d.addCallback(lambda ign: read("si1", [0], [(0,100)]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data]}))
+        return d
 
     def test_operators(self):
         # test operators, the data we're comparing is '11111' in all cases.
@@ -1277,9 +1317,10 @@ class MutableServer(unittest.TestCase):
         # Note that the header requires 472 bytes, so only the first 28 bytes of data are
         # in the first chunk.
 
-        ss = self.create("test_writev")
-        read = ss.remote_slot_readv
-        rstaraw = ss.remote_slot_testv_and_readv_and_writev
+        server = self.create("test_writev")
+        aa = server.get_accountant().get_anonymous_account()
+        read = aa.remote_slot_readv
+        rstaraw = aa.remote_slot_testv_and_readv_and_writev
         secrets = ( self.write_enabler("we1"),
                     self.renew_secret("we1"),
                     self.cancel_secret("we1") )
@@ -1305,8 +1346,7 @@ class MutableServer(unittest.TestCase):
             return d2
 
         self.reset_load_store_counts()
-        d = self.allocate(ss, "si1", "we1", self._lease_secret.next(),
-                          set([0]), 2725)
+        d = self.allocate(aa, "si1", "we1", set([0]), 2725)
         d.addCallback(_check, ([], [(0, "a"*10)], None),
                               "a"*10,
                               1, 2, 1, True)
@@ -1343,16 +1383,16 @@ class MutableServer(unittest.TestCase):
         return d
 
     def test_remove(self):
-        ss = self.create("test_remove")
-        readv = ss.remote_slot_readv
-        writev = ss.remote_slot_testv_and_readv_and_writev
+        server = self.create("test_remove")
+        aa = server.get_accountant().get_anonymous_account()
+        readv = aa.remote_slot_readv
+        writev = aa.remote_slot_testv_and_readv_and_writev
         secrets = ( self.write_enabler("we1"),
                     self.renew_secret("we1"),
                     self.cancel_secret("we1") )
 
         d = defer.succeed(None)
-        d.addCallback(lambda ign: self.allocate(ss, "si1", "we1", self._lease_secret.next(),
-                                                set([0,1,2]), 100))
+        d.addCallback(lambda ign: self.allocate(aa, "si1", "we1", set([0,1,2]), 100))
         # delete sh0 by setting its size to zero
         d.addCallback(lambda ign: writev("si1", secrets,
                                          {0: ([], [], 0)},
@@ -1380,7 +1420,7 @@ class MutableServer(unittest.TestCase):
         d.addCallback(lambda ign: readv("si1", [], [(0,10)]))
         d.addCallback(lambda res: self.failUnlessEqual(res, {}))
 
-        d.addCallback(lambda ign: ss.backend.get_shareset("si1").get_overhead())
+        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_overhead())
         d.addCallback(lambda overhead: self.failUnlessEqual(overhead, 0))
 
         # and the shareset directory should now be gone. This check is only
@@ -1389,12 +1429,12 @@ class MutableServer(unittest.TestCase):
             si = base32.b2a("si1")
             # note: this is a detail of the disk backend, and may change in the future
             prefix = si[:2]
-            prefixdir = self.workdir("test_remove").child("shares").child(prefix)
-            sidir = prefixdir.child(si)
-            self.failUnless(prefixdir.exists(), prefixdir)
-            self.failIf(sidir.exists(), sidir)
+            prefixdir = os.path.join(self.workdir("test_remove"), "shares", prefix)
+            sidir = os.path.join(prefixdir, si)
+            self.failUnless(os.path.exists(prefixdir), prefixdir)
+            self.failIf(os.path.exists(sidir), sidir)
 
-        if isinstance(ss.backend, DiskBackend):
+        if isinstance(server.backend, DiskBackend):
             d.addCallback(_check_gone)
         return d
 
@@ -1403,10 +1443,11 @@ class ServerWithNullBackend(ServerMixin, unittest.TestCase):
     def test_null_backend(self):
         workdir = self.workdir("test_null_backend")
         backend = NullBackend()
-        ss = StorageServer("\x00" * 20, backend, workdir)
-        ss.setServiceParent(self.sparent)
+        server = StorageServer("\x00" * 20, backend, workdir)
+        server.setServiceParent(self.sparent)
+        aa = server.get_accountant().get_anonymous_account()
 
-        d = self.allocate(ss, "vid", [0,1,2], 75)
+        d = self.allocate(aa, "vid", [0,1,2], 75)
         def _allocated( (already, writers) ):
             self.failUnlessEqual(already, set())
             self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
@@ -1414,7 +1455,7 @@ class ServerWithNullBackend(ServerMixin, unittest.TestCase):
             d2 = for_items(self._write_and_close, writers)
 
             # The shares should be present but have no data.
-            d2.addCallback(lambda ign: ss.remote_get_buckets("vid"))
+            d2.addCallback(lambda ign: aa.remote_get_buckets("vid"))
             def _check(buckets):
                 self.failUnlessEqual(set(buckets.keys()), set([0,1,2]))
                 d3 = defer.succeed(None)
@@ -1433,10 +1474,10 @@ class WithMockCloudBackend:
         workdir = self.workdir(name)
         self._container = MockContainer(workdir)
         backend = CloudBackend(self._container)
-        ss = klass("\x00" * 20, backend, workdir,
-                   stats_provider=FakeStatsProvider())
-        ss.setServiceParent(self.sparent)
-        return ss
+        server = klass("\x00" * 20, backend, workdir,
+                       stats_provider=FakeStatsProvider())
+        server.setServiceParent(self.sparent)
+        return server
 
     def reset_load_store_counts(self):
         self._container.reset_load_store_counts()
@@ -1450,10 +1491,10 @@ class WithDiskBackend:
     def create(self, name, readonly=False, reserved_space=0, klass=StorageServer):
         workdir = self.workdir(name)
         backend = DiskBackend(workdir, readonly=readonly, reserved_space=reserved_space)
-        ss = klass("\x00" * 20, backend, workdir,
-                   stats_provider=FakeStatsProvider())
-        ss.setServiceParent(self.sparent)
-        return ss
+        server = klass("\x00" * 20, backend, workdir,
+                       stats_provider=FakeStatsProvider())
+        server.setServiceParent(self.sparent)
+        return server
 
     def reset_load_store_counts(self):
         pass
@@ -1535,7 +1576,6 @@ class ServerWithMockCloudBackend(ServerTest, WithMockCloudBackend, unittest.Test
 
 
 class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
-
     # The following tests are for behaviour that is only supported by a disk backend.
 
     def test_readonly(self):
@@ -1587,122 +1627,6 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
         d.addCallback(_allocated)
         return d
 
-    def test_immutable_leases(self):
-        server = self.create("test_immutable_leases")
-        aa = server.get_accountant().get_anonymous_account()
-        canary = FakeCanary()
-        sharenums = range(5)
-        size = 100
-
-        rs = []
-        cs = []
-        for i in range(6):
-            rs.append(hashutil.tagged_hash("blah", "%d" % self._lease_secret.next()))
-            cs.append(hashutil.tagged_hash("blah", "%d" % self._lease_secret.next()))
-
-        d = aa.remote_allocate_buckets("si0", rs[0], cs[0],
-                                       sharenums, size, canary)
-        def _allocated( (already, writers) ):
-            self.failUnlessEqual(len(already), 0)
-            self.failUnlessEqual(len(writers), 5)
-
-            d2 = for_items(self._close_writer, writers)
-
-            d2.addCallback(lambda ign: list(aa.get_leases("si0")))
-            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 1))
-
-            d2.addCallback(lambda ign: aa.remote_allocate_buckets("si1", rs[1], cs[1],
-                                                                  sharenums, size, canary))
-            return d2
-        d.addCallback(_allocated)
-
-        def _allocated2( (already, writers) ):
-            d2 = for_items(self._close_writer, writers)
-
-            # take out a second lease on si1
-            d2.addCallback(lambda ign: ss.remote_allocate_buckets("si1", rs[2], cs[2],
-                                                                  sharenums, size, canary))
-            return d2
-        d.addCallback(_allocated2)
-
-        def _allocated2a( (already, writers) ):
-            self.failUnlessEqual(len(already), 5)
-            self.failUnlessEqual(len(writers), 0)
-
-            d2 = defer.succeed(None)
-            d2.addCallback(lambda ign: list(ss.get_leases("si1")))
-            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 2))
-
-            # and a third lease, using add-lease
-            d2.addCallback(lambda ign: ss.remote_add_lease("si1", rs[3], cs[3]))
-
-            d2.addCallback(lambda ign: list(ss.get_leases("si1")))
-            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 3))
-
-            # add-lease on a missing storage index is silently ignored
-            d2.addCallback(lambda ign: ss.remote_add_lease("si18", "", ""))
-            d2.addCallback(lambda res: self.failUnlessEqual(res, None))
-
-            # check that si0 is readable
-            d2.addCallback(lambda ign: ss.remote_get_buckets("si0"))
-            d2.addCallback(lambda readers: self.failUnlessEqual(len(readers), 5))
-
-            # renew the first lease. Only the proper renew_secret should work
-            d2.addCallback(lambda ign: ss.remote_renew_lease("si0", rs[0]))
-            d2.addCallback(lambda ign: self.shouldFail(IndexError, 'wrong secret 1', None,
-                                                       lambda: ss.remote_renew_lease("si0", cs[0]) ))
-            d2.addCallback(lambda ign: self.shouldFail(IndexError, 'wrong secret 2', None,
-                                                       lambda: ss.remote_renew_lease("si0", rs[1]) ))
-
-            # check that si0 is still readable
-            d2.addCallback(lambda ign: ss.remote_get_buckets("si0"))
-            d2.addCallback(lambda readers: self.failUnlessEqual(len(readers), 5))
-
-            # There is no such method as remote_cancel_lease for now -- see
-            # ticket #1528.
-            d2.addCallback(lambda ign: self.failIf(hasattr(ss, 'remote_cancel_lease'),
-                                                   "ss should not have a 'remote_cancel_lease' method/attribute"))
-
-            # test overlapping uploads
-            d2.addCallback(lambda ign: ss.remote_allocate_buckets("si3", rs[4], cs[4],
-                                                                  sharenums, size, canary))
-            return d2
-        d.addCallback(_allocated2a)
-
-        def _allocated4( (already, writers) ):
-            self.failUnlessEqual(len(already), 0)
-            self.failUnlessEqual(len(writers), 5)
-
-            d2 = defer.succeed(None)
-            d2.addCallback(lambda ign: ss.remote_allocate_buckets("si3", rs[5], cs[5],
-                                                                  sharenums, size, canary))
-            def _allocated5( (already2, writers2) ):
-                self.failUnlessEqual(len(already2), 0)
-                self.failUnlessEqual(len(writers2), 0)
-
-                d3 = for_items(self._close_writer, writers)
-
-                d3.addCallback(lambda ign: list(ss.get_leases("si3")))
-                d3.addCallback(lambda leases: self.failUnlessEqual(len(leases), 1))
-
-                d3.addCallback(lambda ign: ss.remote_allocate_buckets("si3", rs[5], cs[5],
-                                                                      sharenums, size, canary))
-                return d3
-            d2.addCallback(_allocated5)
-
-            def _allocated6( (already3, writers3) ):
-                self.failUnlessEqual(len(already3), 5)
-                self.failUnlessEqual(len(writers3), 0)
-
-                d3 = defer.succeed(None)
-                d3.addCallback(lambda ign: list(ss.get_leases("si3")))
-                d3.addCallback(lambda leases: self.failUnlessEqual(len(leases), 2))
-                return d3
-            d2.addCallback(_allocated6)
-            return d2
-        d.addCallback(_allocated4)
-        return d
-
     def test_remove_incoming(self):
         server = self.create("test_remove_incoming")
         aa = server.get_accountant().get_anonymous_account()
@@ -1733,13 +1657,35 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
 
         d = self.allocate(aa, "allocate", [0, 1, 2], 150)
         def _allocated( (already, writers) ):
-            self.failIfEqual(ss.allocated_size(), 0)
+            self.failIfEqual(server.allocated_size(), 0)
 
             # Now abort the writers.
             d2 = for_items(self._abort_writer, writers)
-            d2.addCallback(lambda ign: self.failUnlessEqual(aa.allocated_size(), 0))
+            d2.addCallback(lambda ign: self.failUnlessEqual(server.allocated_size(), 0))
             return d2
         d.addCallback(_allocated)
+        return d
+
+    def test_disconnect(self):
+        # simulate a disconnection
+        server = self.create("test_disconnect")
+        aa = server.get_accountant().get_anonymous_account()
+        canary = FakeCanary()
+
+        d = self.allocate(aa, "disconnect", [0,1,2], 75, canary)
+        def _allocated( (already, writers) ):
+            self.failUnlessEqual(already, set())
+            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
+            for (f,args,kwargs) in canary.disconnectors.values():
+                f(*args, **kwargs)
+        d.addCallback(_allocated)
+
+        # returning from _allocated ought to delete the incoming shares
+        d.addCallback(lambda ign: self.allocate(aa, "disconnect", [0,1,2], 75))
+        def _allocated2( (already, writers) ):
+            self.failUnlessEqual(already, set())
+            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
+        d.addCallback(_allocated2)
         return d
 
     @mock.patch('allmydata.util.fileutil.get_disk_stats')
@@ -1805,57 +1751,133 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
 
             # now there should be ALLOCATED=1001+12+72=1085 bytes allocated, and
             # 5000-1085=3915 free, therefore we can fit 39 100byte shares
-            d2.addCallback(lambda ign: self.allocate(aa,"vid3", range(100), 100, canary))
+            d2.addCallback(lambda ign: self.allocate(aa, "vid3", range(100), 100, canary))
             def _allocated3( (already3, writers3) ):
                 self.failUnlessEqual(len(writers3), 39)
                 self.failUnlessEqual(len(server._active_writers), 39)
 
                 d3 = for_items(self._abort_writer, writers3)
-                d3.addCallback(lambda ign: self.failUnlessEqual(len(aa._active_writers), 0))
+                d3.addCallback(lambda ign: self.failUnlessEqual(len(server._active_writers), 0))
                 d3.addCallback(lambda ign: server.disownServiceParent())
                 return d3
             d2.addCallback(_allocated3)
         d.addCallback(_allocated)
         return d
 
-    def test_abort(self):
-        # remote_abort, when called on a writer, should make sure that
-        # the allocated size of the bucket is not counted by the storage
-        # server when accounting for space.
-        server = self.create("test_abort")
-        aa = server.get_accountant().get_anonymous_account()
-
-        d = self.allocate(aa, "allocate", [0, 1, 2], 150)
-        def _allocated( (already, writers) ):
-            self.failIfEqual(aa.allocated_size(), 0)
-
-            # Now abort the writers.
-            d2 = for_items(self._abort_writer, writers)
-            d2.addCallback(lambda ign: self.failUnlessEqual(aa.allocated_size(), 0))
-            return d2
-        d.addCallback(_allocated)
-        return d
-
-    def test_disconnect(self):
-        # simulate a disconnection
-        server = self.create("test_disconnect")
+    def OFF_test_immutable_leases(self):
+        server = self.create("test_immutable_leases")
         aa = server.get_accountant().get_anonymous_account()
         canary = FakeCanary()
+        sharenums = range(5)
+        size = 100
 
-        d = self.allocate(aa, "disconnect", [0,1,2], 75, canary)
+        rs = []
+        cs = []
+        for i in range(6):
+            rs.append(hashutil.tagged_hash("blah", "%d" % self._lease_secret.next()))
+            cs.append(hashutil.tagged_hash("blah", "%d" % self._lease_secret.next()))
+
+        d = aa.remote_allocate_buckets("si0", rs[0], cs[0],
+                                       sharenums, size, canary)
         def _allocated( (already, writers) ):
-            self.failUnlessEqual(already, set())
-            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
-            for (f,args,kwargs) in canary.disconnectors.values():
-                f(*args, **kwargs)
+            self.failUnlessEqual(len(already), 0)
+            self.failUnlessEqual(len(writers), 5)
+
+            d2 = for_items(self._close_writer, writers)
+
+            d2.addCallback(lambda ign: list(aa.get_leases("si0")))
+            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 1))
+
+            d2.addCallback(lambda ign: aa.remote_allocate_buckets("si1", rs[1], cs[1],
+                                                                  sharenums, size, canary))
+            return d2
         d.addCallback(_allocated)
 
-        # returning from _allocated ought to delete the incoming shares
-        d.addCallback(lambda ign: self.allocate(aa, "disconnect", [0,1,2], 75))
         def _allocated2( (already, writers) ):
-            self.failUnlessEqual(already, set())
-            self.failUnlessEqual(set(writers.keys()), set([0,1,2]))
+            d2 = for_items(self._close_writer, writers)
+
+            # take out a second lease on si1
+            d2.addCallback(lambda ign: aa.remote_allocate_buckets("si1", rs[2], cs[2],
+                                                                  sharenums, size, canary))
+            return d2
         d.addCallback(_allocated2)
+
+        def _allocated2a( (already, writers) ):
+            self.failUnlessEqual(len(already), 5)
+            self.failUnlessEqual(len(writers), 0)
+
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: list(aa.get_leases("si1")))
+            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 2))
+
+            # and a third lease, using add-lease
+            d2.addCallback(lambda ign: aa.remote_add_lease("si1", rs[3], cs[3]))
+
+            d2.addCallback(lambda ign: list(aa.get_leases("si1")))
+            d2.addCallback(lambda leases: self.failUnlessEqual(len(leases), 3))
+
+            # add-lease on a missing storage index is silently ignored
+            d2.addCallback(lambda ign: aa.remote_add_lease("si18", "", ""))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, None))
+
+            # check that si0 is readable
+            d2.addCallback(lambda ign: aa.remote_get_buckets("si0"))
+            d2.addCallback(lambda readers: self.failUnlessEqual(len(readers), 5))
+
+            # renew the first lease. Only the proper renew_secret should work
+            d2.addCallback(lambda ign: aa.remote_renew_lease("si0", rs[0]))
+            d2.addCallback(lambda ign: self.shouldFail(IndexError, 'wrong secret 1', None,
+                                                       lambda: aa.remote_renew_lease("si0", cs[0]) ))
+            d2.addCallback(lambda ign: self.shouldFail(IndexError, 'wrong secret 2', None,
+                                                       lambda: aa.remote_renew_lease("si0", rs[1]) ))
+
+            # check that si0 is still readable
+            d2.addCallback(lambda ign: aa.remote_get_buckets("si0"))
+            d2.addCallback(lambda readers: self.failUnlessEqual(len(readers), 5))
+
+            # There is no such method as remote_cancel_lease for now -- see
+            # ticket #1528.
+            d2.addCallback(lambda ign: self.failIf(hasattr(aa, 'remote_cancel_lease'),
+                                                   "aa should not have a 'remote_cancel_lease' method/attribute"))
+
+            # test overlapping uploads
+            d2.addCallback(lambda ign: aa.remote_allocate_buckets("si3", rs[4], cs[4],
+                                                                  sharenums, size, canary))
+            return d2
+        d.addCallback(_allocated2a)
+
+        def _allocated4( (already, writers) ):
+            self.failUnlessEqual(len(already), 0)
+            self.failUnlessEqual(len(writers), 5)
+
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: aa.remote_allocate_buckets("si3", rs[5], cs[5],
+                                                                  sharenums, size, canary))
+            def _allocated5( (already2, writers2) ):
+                self.failUnlessEqual(len(already2), 0)
+                self.failUnlessEqual(len(writers2), 0)
+
+                d3 = for_items(self._close_writer, writers)
+
+                d3.addCallback(lambda ign: list(aa.get_leases("si3")))
+                d3.addCallback(lambda leases: self.failUnlessEqual(len(leases), 1))
+
+                d3.addCallback(lambda ign: aa.remote_allocate_buckets("si3", rs[5], cs[5],
+                                                                      sharenums, size, canary))
+                return d3
+            d2.addCallback(_allocated5)
+
+            def _allocated6( (already3, writers3) ):
+                self.failUnlessEqual(len(already3), 5)
+                self.failUnlessEqual(len(writers3), 0)
+
+                d3 = defer.succeed(None)
+                d3.addCallback(lambda ign: list(aa.get_leases("si3")))
+                d3.addCallback(lambda leases: self.failUnlessEqual(len(leases), 2))
+                return d3
+            d2.addCallback(_allocated6)
+            return d2
+        d.addCallback(_allocated4)
         return d
 
 
@@ -1888,8 +1910,8 @@ class MutableServerWithDiskBackend(MutableServerTest, WithDiskBackend, unittest.
                 self.failUnlessEqual(a.renewal_time, b.renewal_time)
                 self.failUnlessEqual(a.expiration_time, b.expiration_time)
 
-    def test_leases(self):
-        server = self.create("test_leases")
+    def test_mutable_leases(self):
+        server = self.create("test_mutable_leases")
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
 
@@ -1898,11 +1920,13 @@ class MutableServerWithDiskBackend(MutableServerTest, WithDiskBackend, unittest.
                      self.renew_secret("we1-%d" % n),
                      self.cancel_secret("we1-%d" % n) )
         data = "".join([ ("%d" % i) * 10 for i in range(10) ])
-        write = aa.remote_slot_testv_and_readv_and_writev
-        write2 = sa.remote_slot_testv_and_readv_and_writev
+        aa_write = aa.remote_slot_testv_and_readv_and_writev
+        sa_write = sa.remote_slot_testv_and_readv_and_writev
         read = aa.remote_slot_readv
-        rc = write("si0", secrets(0), {0: ([], [(0,data)], None)}, [])
-        self.failUnlessEqual(rc, (True, {}))
+
+        # There is no such method as remote_cancel_lease -- see ticket #1528.
+        self.failIf(hasattr(aa, 'remote_cancel_lease'),
+                    "aa should not have a 'remote_cancel_lease' method/attribute")
 
         # create a random non-numeric file in the bucket directory, to
         # exercise the code that's supposed to ignore those.
@@ -1912,146 +1936,70 @@ class MutableServerWithDiskBackend(MutableServerTest, WithDiskBackend, unittest.
         fileutil.write(os.path.join(bucket_dir, "ignore_me.txt"),
                        "you ought to be ignoring me\n")
 
-        d = self.allocate(aa, "si1", range(5), 100)
-        def _allocated( (already, writers) ):
-            self.failUnlessEqual(len(already), 0)
-            self.failUnlessEqual(len(writers), 5)
+        create_mutable_disk_share(os.path.join(bucket_dir, "0"), server.get_serverid(),
+                                  secrets(0)[0], storageindex="six", shnum=0)
 
-            for wb in writers.values():
-                wb.remote_close()
+        aa.add_share("six", 0, 0, SHARETYPE_MUTABLE)
+        # adding a share does not immediately add a lease
+        self.failUnlessEqual(len(aa.get_leases("six")), 0)
 
-            leases = aa.get_leases("si1")
-            self.failUnlessEqual(len(leases), 5)
+        aa.add_or_renew_default_lease("six", 0)
+        self.failUnlessEqual(len(aa.get_leases("six")), 1)
+
+        d = defer.succeed(None)
+
+        d.addCallback(lambda ign: aa_write("si0", secrets(1), {0: ([], [(0,data)], None)}, []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {})))
+
+        # add-lease on a missing storage index is silently ignored
+        d.addCallback(lambda ign: aa.remote_add_lease("si18", "", ""))
+        d.addCallback(lambda res: self.failUnless(res is None, res))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si18")), 0))
+
+        # create a lease by writing
+        d.addCallback(lambda ign: aa_write("si1", secrets(2), {0: ([], [(0,data)], None)}, []))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
+
+        # renew it directly
+        d.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
+
+        # now allocate another lease using a different account
+        d.addCallback(lambda ign: sa_write("si1", secrets(3), {0: ([], [(0,data)], None)}, []))
+        def _check(ign):
+            aa_leases = aa.get_leases("si1")
+            sa_leases = sa.get_leases("si1")
+
+            self.failUnlessEqual(len(aa_leases), 1)
+            self.failUnlessEqual(len(sa_leases), 1)
 
             d2 = defer.succeed(None)
-            d2.addCallback(lambda ign: ss.remote_add_lease("si18", "", ""))
-            # add-lease on a missing storage index is silently ignored
-            d2.addCallback(lambda res: self.failUnlessEqual(res, None))
+            d2.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
+            d2.addCallback(lambda ign: self.compare_leases(aa_leases, aa.get_leases("si1"),
+                                                           with_timestamps=False))
 
-            # re-allocate the slots and use the same secrets, that should update
-            # the lease
-            d2.addCallback(lambda ign: write("si1", secrets(0), {0: ([], [(0,data)], None)}, []))
-            d2.addCallback(lambda ign: self.failUnlessEqual(len(list(s0.get_leases())), 1))
+            d2.addCallback(lambda ign: sa.remote_renew_lease("si1", "shouldn't matter"))
+            d2.addCallback(lambda ign: self.compare_leases(sa_leases, sa.get_leases("si1"),
+                                                           with_timestamps=False))
 
-            # renew it directly
-            d2.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(0)[1]))
-            d2.addCallback(lambda ign: self.failUnlessEqual(len(list(s0.get_leases())), 1))
-
-            # now allocate them with a bunch of different secrets, to trigger the
-            # extended lease code. Use add_lease for one of them.
-            d2.addCallback(lambda ign: write("si1", secrets(1), {0: ([], [(0,data)], None)}, []))
-            d2.addCallback(lambda ign: self.failUnlessEqual(len(list(s0.get_leases())), 2))
-            secrets2 = secrets(2)
-            d2.addCallback(lambda ign: ss.remote_add_lease("si1", secrets2[1], secrets2[2]))
-            d2.addCallback(lambda ign: self.failUnlessEqual(len(list(s0.get_leases())), 3))
-            d2.addCallback(lambda ign: write("si1", secrets(3), {0: ([], [(0,data)], None)}, []))
-            d2.addCallback(lambda ign: write("si1", secrets(4), {0: ([], [(0,data)], None)}, []))
-            d2.addCallback(lambda ign: write("si1", secrets(5), {0: ([], [(0,data)], None)}, []))
-
-            d2.addCallback(lambda ign: self.failUnlessEqual(len(list(s0.get_leases())), 6))
-
-            def _check_all_leases(ign):
-                all_leases = list(s0.get_leases())
-
-                # and write enough data to expand the container, forcing the server
-                # to move the leases
-                d3 = defer.succeed(None)
-                d3.addCallback(lambda ign: write("si1", secrets(0),
-                                                 {0: ([], [(0,data)], 200), },
-                                                 []))
-
-                # read back the leases, make sure they're still intact.
-                d3.addCallback(lambda ign: self.compare_leases_without_timestamps(all_leases,
-                                                                                  list(s0.get_leases())))
-
-                d3.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(0)[1]))
-                d3.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(1)[1]))
-                d3.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(2)[1]))
-                d3.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(3)[1]))
-                d3.addCallback(lambda ign: ss.remote_renew_lease("si1", secrets(4)[1]))
-                d3.addCallback(lambda ign: self.compare_leases_without_timestamps(all_leases,
-                                                                                  list(s0.get_leases())))
-            d2.addCallback(_check_all_leases)
-
-            def _check_all_leases_again(ign):
-                # get a new copy of the leases, with the current timestamps. Reading
-                # data and failing to renew/cancel leases should leave the timestamps
-                # alone.
-                all_leases = list(s0.get_leases())
-                # renewing with a bogus token should prompt an error message
-
-                # examine the exception thus raised, make sure the old nodeid is
-                # present, to provide for share migration
-                d3 = self.shouldFail(IndexError, 'old nodeid present',
-                                     "Unable to renew non-existent lease. "
-                                     "I have leases accepted by nodeids: "
-                                     "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' .",
-                                     lambda: ss.remote_renew_lease("si1", secrets(20)[1]) )
-
-                d3.addCallback(lambda ign: self.compare_leases(all_leases, list(s0.get_leases())))
-
+            # Get a new copy of the leases, with the current timestamps. Reading
+            # data should leave the timestamps alone.
+            d2.addCallback(lambda ign: aa.get_leases("si1"))
+            def _check2(new_aa_leases):
                 # reading shares should not modify the timestamp
-                d3.addCallback(lambda ign: read("si1", [], [(0,200)]))
-                d3.addCallback(lambda ign: self.compare_leases(all_leases, list(s0.get_leases())))
+                d3 = read("si1", [], [(0, 200)])
+                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
+                                                               with_timestamps=False))
 
-                d3.addCallback(lambda ign: write("si1", secrets(0),
-                                                 {0: ([], [(200, "make me bigger")], None)}, []))
-                d3.addCallback(lambda ign: self.compare_leases_without_timestamps(all_leases, list(s0.get_leases())))
-
-                d3.addCallback(lambda ign: write("si1", secrets(0),
-                                                 {0: ([], [(500, "make me really bigger")], None)}, []))
-                d3.addCallback(lambda ign: self.compare_leases_without_timestamps(all_leases, list(s0.get_leases())))
-            d2.addCallback(_check_all_leases_again)
+                d3.addCallback(lambda ign: aa_write("si1", secrets(2),
+                      {0: ([], [(500, "make me bigger")], None)}, []))
+                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
+                                                               with_timestamps=False))
+                return d3
+            d2.addCallback(_check2)
             return d2
-        d.addCallback(_got_s0)
+        d.addCallback(_check)
         return d
-
-    def test_remove(self):
-        server = self.create("test_remove")
-        aa = server.get_accountant().get_anonymous_account()
-
-        self.allocate(aa, "si1", "we1", self._lease_secret.next(),
-                      set([0,1,2]), 100)
-        readv = aa.remote_slot_readv
-        writev = aa.remote_slot_testv_and_readv_and_writev
-        secrets = ( self.write_enabler("we1"),
-                    self.renew_secret("we1"),
-                    self.cancel_secret("we1") )
-        # delete sh0 by setting its size to zero
-        answer = writev("si1", secrets,
-                        {0: ([], [], 0)},
-                        [])
-        # the answer should mention all the shares that existed before the
-        # write
-        self.failUnlessEqual(answer, (True, {0:[],1:[],2:[]}) )
-        # but a new read should show only sh1 and sh2
-        self.failUnlessEqual(readv("si1", [], [(0,10)]),
-                             {1: [""], 2: [""]})
-
-        # delete sh1 by setting its size to zero
-        answer = writev("si1", secrets,
-                        {1: ([], [], 0)},
-                        [])
-        self.failUnlessEqual(answer, (True, {1:[],2:[]}) )
-        self.failUnlessEqual(readv("si1", [], [(0,10)]),
-                             {2: [""]})
-
-        # delete sh2 by setting its size to zero
-        answer = writev("si1", secrets,
-                        {2: ([], [], 0)},
-                        [])
-        self.failUnlessEqual(answer, (True, {2:[]}) )
-        self.failUnlessEqual(readv("si1", [], [(0,10)]),
-                             {})
-        # and the bucket directory should now be gone
-        si = base32.b2a("si1")
-        # note: this is a detail of the storage server implementation, and
-        # may change in the future
-        prefix = si[:2]
-        prefixdir = os.path.join(self.workdir("test_remove"), "shares", prefix)
-        bucketdir = os.path.join(prefixdir, si)
-        self.failUnless(os.path.exists(prefixdir), prefixdir)
-        self.failIf(os.path.exists(bucketdir), bucketdir)
 
 
 class MDMFProxies(unittest.TestCase, ShouldFailMixin):
@@ -3678,7 +3626,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
             return (hashutil.tagged_hash("renew-%d" % num, si),
                     hashutil.tagged_hash("cancel-%d" % num, si))
 
-        writev = ss.remote_slot_testv_and_readv_and_writev
+        writev = aa.remote_slot_testv_and_readv_and_writev
 
         immutable_si_0, rs0, cs0 = make("\x00" * 16)
         immutable_si_1, rs1, cs1 = make("\x01" * 16)
