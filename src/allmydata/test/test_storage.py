@@ -19,14 +19,15 @@ from allmydata.util import fileutil, hashutil, base32, time_format
 from allmydata.storage.server import StorageServer
 from allmydata.storage.backends.null.null_backend import NullBackend
 from allmydata.storage.backends.disk.disk_backend import DiskBackend
-from allmydata.storage.backends.disk.immutable import load_immutable_disk_share, create_immutable_disk_share
+from allmydata.storage.backends.disk.immutable import load_immutable_disk_share, \
+     create_immutable_disk_share, ImmutableDiskShare
 from allmydata.storage.backends.disk.mutable import MutableDiskShare
 from allmydata.storage.backends.cloud.cloud_backend import CloudBackend
 from allmydata.storage.backends.cloud import mock_cloud, cloud_common
 from allmydata.storage.backends.cloud.mock_cloud import MockContainer, MockServiceError, \
      ContainerItem, ContainerListing
 from allmydata.storage.bucket import BucketWriter, BucketReader
-from allmydata.storage.common import DataTooLargeError, storage_index_to_dir, NUM_RE, \
+from allmydata.storage.common import DataTooLargeError, storage_index_to_dir, NUM_RE, PREFIX, \
      UnknownMutableContainerVersionError, UnknownImmutableContainerVersionError
 from allmydata.storage.leasedb import SHARETYPE_IMMUTABLE, SHARETYPE_MUTABLE
 from allmydata.storage.expiration import ExpirationPolicy
@@ -145,7 +146,7 @@ class Bucket(BucketTestMixin, unittest.TestCase):
         # -- see allmydata/immutable/layout.py . This test, which is
         # simulating a client, just sends 'a'.
         share_data = 'a'
-        extra_data = 'b' * ShareFile.LEASE_SIZE
+        extra_data = 'b' * ImmutableDiskShare.LEASE_SIZE
         share_file_data = containerdata + share_data + extra_data
 
         incoming, final = self.make_workdir("test_read_past_end_of_share_data")
@@ -492,37 +493,6 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         d.addCallback(_allocated)
         return d
 
-    def test_large_share(self):
-        syslow = platform.system().lower()
-        if 'cygwin' in syslow or 'windows' in syslow or 'darwin' in syslow:
-            raise unittest.SkipTest("If your filesystem doesn't support efficient sparse files then it is very expensive (Mac OS X and Windows don't support efficient sparse files).")
-
-        avail = fileutil.get_available_space('.', 512*2**20)
-        if avail <= 4*2**30:
-            raise unittest.SkipTest("This test will spuriously fail if you have less than 4 GiB free on your filesystem.")
-
-        server = self.create("test_large_share")
-        aa = server.get_accountant().get_anonymous_account()
-
-        d = self.allocate(ss, "allocate", [0], 2**32+2)
-        def _allocated( (already, writers) ):
-            self.failUnlessEqual(already, set())
-            self.failUnlessEqual(set(writers.keys()), set([0]))
-
-            shnum, bucket = writers.items()[0]
-
-            # This test is going to hammer your filesystem if it doesn't make a sparse file for this.  :-(
-            d2 = defer.succeed(None)
-            d2.addCallback(lambda ign: bucket.remote_write(2**32, "ab"))
-            d2.addCallback(lambda ign: bucket.remote_close())
-
-            d2.addCallback(lambda ign: aa.remote_get_buckets("allocate"))
-            d2.addCallback(lambda readers: readers[shnum].remote_read(2**32, 2))
-            d2.addCallback(lambda res: self.failUnlessEqual(res, "ab"))
-            return d2
-        d.addCallback(_allocated)
-        return d
-
     def test_dont_overfill_dirs(self):
         """
         This test asserts that if you add a second share whose storage index
@@ -536,7 +506,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
 
         def _write_and_get_children( (already, writers) ):
             d = for_items(self._write_and_close, writers)
-            d.addCallback(lambda ign: sorted(fileutil.listdir(storedir, filter=NUM_RE)))
+            d.addCallback(lambda ign: sorted(fileutil.listdir(storedir, filter=PREFIX)))
             return d
 
         d = self.allocate(ss, "storageindex", [0], 25)
@@ -550,44 +520,6 @@ class ServerTest(ServerMixin, ShouldFailMixin):
             d2.addCallback(lambda res: self.failUnlessEqual(res, children_of_storedir))
             return d2
         d.addCallback(_got_children)
-        return d
-
-    def test_remove_incoming(self):
-        server = self.create("test_remove_incoming")
-        aa = server.get_accountant().get_anonymous_account()
-
-        d = self.allocate(aa, "vid", range(3), 10)
-        def _write_and_check( (already, writers) ):
-            d2 = for_items(self._write_and_close, writers)
-            def _check(ign):
-                incoming_share_dir = writers[0].incominghome
-                incoming_bucket_dir = os.path.dirname(incoming_share_dir)
-                incoming_prefix_dir = os.path.dirname(incoming_bucket_dir)
-                incoming_dir = os.path.dirname(incoming_prefix_dir)
-                self.failIf(os.path.exists(incoming_bucket_dir), incoming_bucket_dir)
-                self.failIf(os.path.exists(incoming_prefix_dir), incoming_prefix_dir)
-                self.failUnless(os.path.exists(incoming_dir), incoming_dir)
-            d2.addCallback(_check)
-            return d2
-        d.addCallback(_write_and_check)
-        return d
-
-    def test_abort(self):
-        # remote_abort, when called on a writer, should make sure that
-        # the allocated size of the bucket is not counted by the storage
-        # server when accounting for space.
-        server = self.create("test_abort")
-        aa = server.get_accountant().get_anonymous_account()
-
-        d = self.allocate(aa, "allocate", [0, 1, 2], 150)
-        def _allocated( (already, writers) ):
-            self.failIfEqual(ss.allocated_size(), 0)
-
-            # Now abort the writers.
-            d2 = for_items(self._abort_writer, writers)
-            d2.addCallback(lambda ign: self.failUnlessEqual(aa.allocated_size(), 0))
-            return d2
-        d.addCallback(_allocated)
         return d
 
     def OFF_test_allocate(self):
@@ -976,7 +908,7 @@ class MutableServer(unittest.TestCase):
 
         # Trying to make the container too large (by sending a write vector
         # whose offset is too high) will raise an exception.
-        TOOBIG = MutableShareFile.MAX_SIZE + 10
+        TOOBIG = MutableDiskShare.MAX_SIZE + 10
         self.failUnlessRaises(DataTooLargeError,
                               rstaraw, "si1", secrets,
                               {0: ([], [(TOOBIG,data)], None)},
@@ -1772,23 +1704,40 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
         return d
 
     def test_remove_incoming(self):
-        ss = self.create("test_remove_incoming")
-        d = self.allocate(ss, "vid", range(3), 25)
-        def _allocated( (already, writers) ):
-            d2 = defer.succeed(None)
-            for i, bw in writers.items():
-                incoming_share_home = bw._share._get_path()
-                d2.addCallback(self._write_and_close, i, bw)
+        server = self.create("test_remove_incoming")
+        aa = server.get_accountant().get_anonymous_account()
 
-            incoming_si_dir = os.path.basename(incoming_share_home)
-            incoming_prefix_dir = os.path.basename(incoming_si_dir)
-            incoming_dir = os.path.basename(incoming_prefix_dir)
+        d = self.allocate(aa, "vid", range(3), 10)
+        def _write_and_check( (already, writers) ):
+            d2 = for_items(self._write_and_close, writers)
+            def _check(ign):
+                incoming_share_home = writers[0]._share._get_path()
+                incoming_si_dir = os.path.dirname(incoming_share_home)
+                incoming_prefix_dir = os.path.dirname(incoming_si_dir)
+                incoming_dir = os.path.dirname(incoming_prefix_dir)
 
-            def _check_existence(ign):
-                self.failIf(os.path.exists(incoming_si_dir.exists), incoming_si_dir)
+                self.failIf(os.path.exists(incoming_si_dir), incoming_si_dir)
                 self.failIf(os.path.exists(incoming_prefix_dir), incoming_prefix_dir)
                 self.failUnless(os.path.exists(incoming_dir), incoming_dir)
-            d2.addCallback(_check_existence)
+            d2.addCallback(_check)
+            return d2
+        d.addCallback(_write_and_check)
+        return d
+
+    def test_abort(self):
+        # remote_abort, when called on a writer, should make sure that
+        # the allocated size of the bucket is not counted by the storage
+        # server when accounting for space.
+        server = self.create("test_abort")
+        aa = server.get_accountant().get_anonymous_account()
+
+        d = self.allocate(aa, "allocate", [0, 1, 2], 150)
+        def _allocated( (already, writers) ):
+            self.failIfEqual(ss.allocated_size(), 0)
+
+            # Now abort the writers.
+            d2 = for_items(self._abort_writer, writers)
+            d2.addCallback(lambda ign: self.failUnlessEqual(aa.allocated_size(), 0))
             return d2
         d.addCallback(_allocated)
         return d

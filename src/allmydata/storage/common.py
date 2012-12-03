@@ -7,6 +7,8 @@ from allmydata.util import base32
 # Share numbers match this regex:
 NUM_RE=re.compile("^[0-9]+$")
 
+PREFIX = re.compile("^[%s]{2}$" % (base32.z_base_32_alphabet,))
+
 
 class DataTooLargeError(Exception):
     pass
