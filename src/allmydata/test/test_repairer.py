@@ -8,6 +8,7 @@ from allmydata.test import common
 from allmydata.monitor import Monitor
 from allmydata import check_results
 from allmydata.interfaces import NotEnoughSharesError
+from allmydata.check_results import CheckAndRepairResults
 from allmydata.immutable import upload
 from allmydata.util import fileutil
 from allmydata.util.consumer import download_to_data
@@ -716,8 +717,9 @@ class Repairer(GridTestMixin, unittest.TestCase, RepairTestMixin,
             self.failUnlessEqual(len(shares), 10)
             self.delete_shares_numbered(self.uri, [9])
             return self.c0_filenode.check_and_repair(Monitor())
-        d.addCallback(_then)
+        d.addCallback(_got_shares)
         def _check(rr):
+            self.failUnlessIsInstance(rr, CheckAndRepairResults)
             prr = rr.get_post_repair_results()
 
             # We expect the repair to have restored all shares...
