@@ -3281,7 +3281,7 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
              offsets) = verinfo
             self.failUnlessEqual(seqnum, 0)
             self.failUnlessEqual(root_hash, self.root_hash)
-            self.failIf(IV)
+            self.failIf(IV, IV)
             self.failUnlessEqual(segsize, 6)
             self.failUnlessEqual(datalen, 36)
             self.failUnlessEqual(k, 3)
@@ -3336,12 +3336,9 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
 
         # Now finish publishing
         d = sdmfr.finish_publishing()
-        def _then(ignored):
-            self.failUnlessEqual(self.rref.write_count, 1)
-            read = self.aa.remote_slot_readv
-            self.failUnlessEqual(read("si1", [0], [(0, len(data))]),
-                                 {0: [data]})
-        d.addCallback(_then)
+        d.addCallback(lambda ign: self.failUnlessEqual(self.rref.write_count, 1))
+        d.addCallback(lambda ign: self.aa.remote_slot_readv("si1", [0], [(0, len(data))]))
+        d.addCallback(lambda res: self.failUnlessEqual(res, {0: [data]}))
         return d
 
     def test_sdmf_writer_preexisting_share(self):
@@ -3380,29 +3377,25 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
             # We shouldn't have a checkstring yet
             self.failUnlessEqual(sdmfw.get_checkstring(), "")
 
-            return sdmfw.finish_publishing()
+            d2 = sdmfw.finish_publishing()
+            def _then(results):
+                self.failIf(results[0])
+                # this is the correct checkstring
+                self._expected_checkstring = results[1][0][0]
+                return self._expected_checkstring
+            d2.addCallback(_then)
+            d2.addCallback(sdmfw.set_checkstring)
+            d2.addCallback(lambda ign: sdmfw.get_checkstring())
+            d2.addCallback(lambda checkstring: self.failUnlessEqual(checkstring,
+                                                                    self._expected_checkstring))
+            d2.addCallback(lambda ign: sdmfw.finish_publishing())
+            d2.addCallback(lambda res: self.failUnless(res[0], res))
+            d2.addCallback(lambda ign: self.aa.remote_slot_readv("si1", [0], [(1, 8)]))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, {0: [struct.pack(">Q", 1)]}))
+            d2.addCallback(lambda ign: self.aa.remote_slot_readv("si1", [0], [(9, len(data) - 9)]))
+            d2.addCallback(lambda res: self.failUnlessEqual(res, {0: [data[9:]]}))
+            return d2
         d.addCallback(_written)
-        def _then(results):
-            self.failIf(results[0])
-            # this is the correct checkstring
-            self._expected_checkstring = results[1][0][0]
-            return self._expected_checkstring
-        d.addCallback(_then)
-        d.addCallback(sdmfw.set_checkstring)
-        d.addCallback(lambda ignored:
-            sdmfw.get_checkstring())
-        d.addCallback(lambda checkstring:
-            self.failUnlessEqual(checkstring, self._expected_checkstring))
-        d.addCallback(lambda ignored:
-            sdmfw.finish_publishing())
-        def _then_again(results):
-            self.failUnless(results[0])
-            read = self.aa.remote_slot_readv
-            self.failUnlessEqual(read("si1", [0], [(1, 8)]),
-                                 {0: [struct.pack(">Q", 1)]})
-            self.failUnlessEqual(read("si1", [0], [(9, len(data) - 9)]),
-                                 {0: [data[9:]]})
-        d.addCallback(_then_again)
         return d
 
 
