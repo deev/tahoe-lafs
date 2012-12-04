@@ -727,7 +727,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         si0_s = base32.b2a("si0")
         aa.remote_advise_corrupt_share("immutable", "si0", 0,
                                        "This share smells funny.\n")
-        reportdir = os.path.join(aa._statedir, "corruption-advisories")
+        reportdir = os.path.join(server._statedir, "corruption-advisories")
         self.failUnless(os.path.exists(reportdir), reportdir)
         reports = fileutil.listdir(reportdir)
         self.failUnlessEqual(len(reports), 1)

@@ -45,6 +45,11 @@ class StorageServer(service.MultiService):
         self._active_writers = weakref.WeakKeyDictionary()
         self._statedir = statedir
         fileutil.make_dirs(self._statedir)
+
+        # we don't actually create the corruption-advisory dir until necessary
+        self._corruption_advisory_dir = os.path.join(self._statedir,
+                                                     "corruption-advisories")
+
         log.msg("StorageServer created", facility="tahoe.storage")
 
         self.latencies = {"allocate": [], # immutable
@@ -319,13 +324,13 @@ class StorageServer(service.MultiService):
         return d
 
     def client_advise_corrupt_share(self, share_type, storage_index, shnum, reason, account):
-        fileutil.make_dirs(self.corruption_advisory_dir)
+        fileutil.make_dirs(self._corruption_advisory_dir)
         now = time_format.iso_utc(sep="T")
         si_s = si_b2a(storage_index)
         owner_num = account.get_owner_num()
 
         # windows can't handle colons in the filename
-        fn = os.path.join(self.corruption_advisory_dir,
+        fn = os.path.join(self._corruption_advisory_dir,
                           "%s--%s-%d" % (now, si_s, shnum)).replace(":","")
         f = open(fn, "w")
         try:
