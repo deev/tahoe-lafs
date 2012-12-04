@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 import os, sys
 
@@ -30,6 +31,26 @@ def get_db(dbfile, stderr=sys.stderr,
     # Enabling foreign keys allows stricter integrity checking.
     # The default is unspecified according to <http://www.sqlite.org/foreignkeys.html#fk_enable>.
     c.execute("PRAGMA foreign_keys = ON;")
+
+    # For the next two PRAGMA settings, see
+    # https://tahoe-lafs.org/pipermail/tahoe-dev/2012-December/007877.html
+    # for discussion. Without these two settings, leasedb can handle about
+    # 3.2 lease renewals per second on Zooko's Macbook Pro 5,3 with Linux,
+    # ext4, and a spinning disk. With these two settings, leasedb can handle
+    # about 250 lease renewals per second. These settings do not add any risk
+    # of corruption or non-atomic update. They do add a risk of
+    # non-durability, in which the db can rollback to an earlier (correct)
+    # version due to a kernel panic or power failure. Such a rollback is not
+    # a critical problem for the ways we currently use sqlite (leasedb and
+    # backupdb).
+
+    # Write-Ahead-Log — http://www.sqlite.org/wal.html — is more efficient
+    # for our uses than the traditional rollback journal. It requires sqlite
+    # >= v3.7.0 (released 2010-07-22). If the current sqlite is too old and
+    # doesn't support Write-Ahead-Log, this PRAGMA will be ignored and do no
+    # harm.
+    c.execute("PRAGMA journal_mode = WAL;")
+    c.execute("PRAGMA synchronous = NORMAL;")
 
     if must_create:
         c.executescript(schema)
