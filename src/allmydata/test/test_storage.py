@@ -2932,11 +2932,11 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
         # The MDMFSlotReadProxy should also know how to read SDMF files,
         # since it will encounter them on the grid. Callers use the
         # is_sdmf method to test this.
-        self.write_sdmf_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.is_sdmf()
-        d.addCallback(lambda issdmf:
-            self.failUnless(issdmf))
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.is_sdmf())
+        d.addCallback(lambda issdmf: self.failUnless(issdmf))
         return d
 
     def test_reads_sdmf(self):
@@ -2944,13 +2944,11 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
 
         # The slot read proxy should, naturally, know how to tell us
         # about data in the SDMF format
-        self.write_sdmf_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         d = defer.succeed(None)
-        d.addCallback(lambda ignored:
-            mr.is_sdmf())
-        d.addCallback(lambda issdmf:
-            self.failUnless(issdmf))
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.is_sdmf())
+        d.addCallback(lambda issdmf: self.failUnless(issdmf))
 
         # What do we need to read?
         #  - The sharedata
@@ -3016,13 +3014,11 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
         # SDMF shares have only one segment, so it doesn't make sense to
         # read more segments than that. The reader should know this and
         # complain if we try to do that.
-        self.write_sdmf_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         d = defer.succeed(None)
-        d.addCallback(lambda ignored:
-            mr.is_sdmf())
-        d.addCallback(lambda issdmf:
-            self.failUnless(issdmf))
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.is_sdmf())
+        d.addCallback(lambda issdmf: self.failUnless(issdmf))
         d.addCallback(lambda ignored:
             self.shouldFail(LayoutInvalid, "test bad segment",
                             None,
@@ -3042,7 +3038,8 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
             mr = MDMFSlotReadProxy(self.rref, "si1", 0, mdmf_data[:length])
             return mr
 
-        d = self.write_test_share_to_server("si1")
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
 
         # This should be enough to fill in both the encoding parameters
         # and the table of offsets, which will complete the version
@@ -3101,12 +3098,13 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
         self.init("test_read_with_prefetched_sdmf_data")
 
         sdmf_data = self.build_test_sdmf_share()
-        self.write_sdmf_share_to_server("si1")
         def _make_mr(ignored, length):
             mr = MDMFSlotReadProxy(self.rref, "si1", 0, sdmf_data[:length])
             return mr
 
         d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
+
         # This should be enough to get us the encoding parameters,
         # offset table, and everything else we need to build a verinfo
         # string.
@@ -3168,11 +3166,11 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
         # Some tests upload a file with no contents to test things
         # unrelated to the actual handling of the content of the file.
         # The reader should behave intelligently in these cases.
-        self.write_test_share_to_server("si1", empty=True)
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1", empty=True))
         # We should be able to get the encoding parameters, and they
         # should be correct.
-        d = defer.succeed(None)
         d.addCallback(lambda ignored:
             mr.get_encoding_parameters())
         def _check_encoding_parameters(params):
@@ -3195,11 +3193,11 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
     def test_read_with_empty_sdmf_file(self):
         self.init("test_read_with_empty_sdmf_file")
 
-        self.write_sdmf_share_to_server("si1", empty=True)
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1", empty=True))
         # We should be able to get the encoding parameters, and they
         # should be correct
-        d = defer.succeed(None)
         d.addCallback(lambda ignored:
             mr.get_encoding_parameters())
         def _check_encoding_parameters(params):
@@ -3222,10 +3220,10 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
     def test_verinfo_with_sdmf_file(self):
         self.init("test_verinfo_with_sdmf_file")
 
-        self.write_sdmf_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         # We should be able to get the version information.
         d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
         d.addCallback(lambda ignored:
             mr.get_verinfo())
         def _check_verinfo(verinfo):
@@ -3264,9 +3262,9 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
     def test_verinfo_with_mdmf_file(self):
         self.init("test_verinfo_with_mdmf_file")
 
-        self.write_test_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
         d.addCallback(lambda ignored:
             mr.get_verinfo())
         def _check_verinfo(verinfo):
@@ -3350,44 +3348,45 @@ class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
         self.init("test_sdmf_writer_preexisting_share")
 
         data = self.build_test_sdmf_share()
-        self.write_sdmf_share_to_server("si1")
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_sdmf_share_to_server("si1"))
+        def _written(ign):
+            # Now there is a share on the storage server. To successfully
+            # write, we need to set the checkstring correctly. When we
+            # don't, no write should occur.
+            sdmfw = SDMFSlotWriteProxy(0,
+                                       self.rref,
+                                       "si1",
+                                       self.secrets,
+                                       1, 3, 10, 36, 36)
+            sdmfw.put_block(self.blockdata, 0, self.salt)
 
-        # Now there is a share on the storage server. To successfully
-        # write, we need to set the checkstring correctly. When we
-        # don't, no write should occur.
-        sdmfw = SDMFSlotWriteProxy(0,
-                                   self.rref,
-                                   "si1",
-                                   self.secrets,
-                                   1, 3, 10, 36, 36)
-        sdmfw.put_block(self.blockdata, 0, self.salt)
+            # Put the encprivkey
+            sdmfw.put_encprivkey(self.encprivkey)
 
-        # Put the encprivkey
-        sdmfw.put_encprivkey(self.encprivkey)
+            # Put the block and share hash chains
+            sdmfw.put_blockhashes(self.block_hash_tree)
+            sdmfw.put_sharehashes(self.share_hash_chain)
 
-        # Put the block and share hash chains
-        sdmfw.put_blockhashes(self.block_hash_tree)
-        sdmfw.put_sharehashes(self.share_hash_chain)
+            # Put the root hash
+            sdmfw.put_root_hash(self.root_hash)
 
-        # Put the root hash
-        sdmfw.put_root_hash(self.root_hash)
+            # Put the signature
+            sdmfw.put_signature(self.signature)
 
-        # Put the signature
-        sdmfw.put_signature(self.signature)
+            # Put the verification key
+            sdmfw.put_verification_key(self.verification_key)
 
-        # Put the verification key
-        sdmfw.put_verification_key(self.verification_key)
+            # We shouldn't have a checkstring yet
+            self.failUnlessEqual(sdmfw.get_checkstring(), "")
 
-        # We shouldn't have a checkstring yet
-        self.failUnlessEqual(sdmfw.get_checkstring(), "")
-
-        d = sdmfw.finish_publishing()
+            return sdmfw.finish_publishing()
+        d.addCallback(_written)
         def _then(results):
             self.failIf(results[0])
             # this is the correct checkstring
             self._expected_checkstring = results[1][0][0]
             return self._expected_checkstring
-
         d.addCallback(_then)
         d.addCallback(sdmfw.set_checkstring)
         d.addCallback(lambda ignored:
