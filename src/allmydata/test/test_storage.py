@@ -594,7 +594,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         aa = server.get_accountant().get_anonymous_account()
         canary = FakeCanary()
 
-        shareset = aa.backend.get_shareset('teststorage_index')
+        shareset = server.backend.get_shareset('teststorage_index')
         self.failIf(shareset.has_incoming(0))
 
         # Populate incoming with the sharenum: 0.
@@ -612,14 +612,14 @@ class ServerTest(ServerMixin, ShouldFailMixin):
             d2.addCallback(lambda (already2, writers2): self.failIf(writers2))
 
             # Test allocated size.
-            d2.addCallback(lambda ign: aa.allocated_size())
+            d2.addCallback(lambda ign: server.allocated_size())
             d2.addCallback(lambda space: self.failUnlessEqual(space, 1))
 
             # Write 'a' to shnum 0. Only tested together with close and read.
             d2.addCallback(lambda ign: writers[0].remote_write(0, 'a'))
 
             # Preclose: Inspect final, failUnless nothing there.
-            d2.addCallback(lambda ign: aa.backend.get_shareset('teststorage_index').get_shares())
+            d2.addCallback(lambda ign: server.backend.get_shareset('teststorage_index').get_shares())
             def _check( (shares, corrupted) ):
                 self.failUnlessEqual(len(shares), 0, str(shares))
                 self.failUnlessEqual(len(corrupted), 0, str(corrupted))
@@ -628,7 +628,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
             d2.addCallback(lambda ign: writers[0].remote_close())
 
             # Postclose: fail unless written data is in final.
-            d2.addCallback(lambda ign: aa.backend.get_shareset('teststorage_index').get_shares())
+            d2.addCallback(lambda ign: server.backend.get_shareset('teststorage_index').get_shares())
             def _got_shares( (sharesinfinal, corrupted) ):
                 self.failUnlessEqual(len(sharesinfinal), 1, str(sharesinfinal))
                 self.failUnlessEqual(len(corrupted), 0, str(corrupted))
@@ -699,7 +699,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
             return d2
         d.addCallback(_allocated)
 
-        d.addCallback(lambda ign: aa.backend.get_shareset("allocate").get_share(0))
+        d.addCallback(lambda ign: server.backend.get_shareset("allocate").get_share(0))
         def _write_invalid_version(share0):
             f = open(share0._get_path(), "rb+")
             try:
@@ -714,7 +714,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
         d.addCallback(lambda b: self.failUnlessEqual(set(b.keys()), set([1])))
 
         # Also if there are only corrupted shares.
-        d.addCallback(lambda ign: aa.backend.get_shareset("allocate").get_share(1))
+        d.addCallback(lambda ign: server.backend.get_shareset("allocate").get_share(1))
         d.addCallback(lambda share: share.unlink())
         d.addCallback(lambda ign: aa.remote_get_buckets("allocate"))
         d.addCallback(lambda b: self.failUnlessEqual(b, {}))
@@ -885,7 +885,7 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
         read = aa.remote_slot_readv
 
         d = self.allocate(aa, "si1", "we1", set([0,1]), 10)
-        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_share(0))
+        d.addCallback(lambda ign: server.backend.get_shareset("si1").get_share(0))
         def _got_share(share0):
             f = open(share0._get_path(), "rb+")
             try:
@@ -900,7 +900,7 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
         d.addCallback(lambda res: self.failUnlessEqual(res, {1: ['']}))
 
         # Also if there are only corrupted shares.
-        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_share(1))
+        d.addCallback(lambda ign: server.backend.get_shareset("si1").get_share(1))
         d.addCallback(lambda share: share.unlink())
         d.addCallback(lambda ign: read("si1", [0], [(0,10)]) )
         d.addCallback(lambda res: self.failUnlessEqual(res, {}))
@@ -1396,7 +1396,7 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
         d.addCallback(lambda ign: readv("si1", [], [(0,10)]))
         d.addCallback(lambda res: self.failUnlessEqual(res, {}))
 
-        d.addCallback(lambda ign: aa.backend.get_shareset("si1").get_overhead())
+        d.addCallback(lambda ign: server.backend.get_shareset("si1").get_overhead())
         d.addCallback(lambda overhead: self.failUnlessEqual(overhead, 0))
 
         # and the shareset directory should now be gone. This check is only
@@ -1621,9 +1621,10 @@ class ServerWithMockCloudBackend(WithMockCloudBackend, ServerTest, unittest.Test
                 levels.append(level)
         self.patch(cloud_common.log, 'msg', call_log_msg)
 
-        ss = self.create(name)
+        server = self.create(name)
+        aa = server.get_accountant().get_anonymous_account()
 
-        d = self.allocate(ss, "vid", [0], 75)
+        d = self.allocate(aa, "vid", [0], 75)
         d.addCallback(lambda (already, writers): for_items(self._write_and_close, writers))
         return d
 
