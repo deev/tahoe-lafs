@@ -427,7 +427,7 @@ class ServerTest(ServerMixin, ShouldFailMixin):
     def test_create(self):
         server = self.create("test_create")
         aa = server.get_accountant().get_anonymous_account()
-        self.failUnless(isinstance(aa, RIStorageServer))
+        self.failUnless(RIStorageServer.providedBy(aa), aa)
 
     def test_declares_fixed_1528(self):
         server = self.create("test_declares_fixed_1528")
@@ -877,7 +877,7 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
     def test_create(self):
         server = self.create("test_create")
         aa = server.get_accountant().get_anonymous_account()
-        self.failUnless(isinstance(aa, RIStorageServer))
+        self.failUnless(RIStorageServer.providedBy(aa), aa)
 
     def test_bad_magic(self):
         server = self.create("test_bad_magic")
