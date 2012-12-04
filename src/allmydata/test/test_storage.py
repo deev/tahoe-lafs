@@ -1,5 +1,5 @@
 
-import time, os.path, platform, re, simplejson, struct, shutil, itertools
+import time, os.path, platform, re, simplejson, struct, itertools
 from collections import deque
 
 import mock
@@ -9,7 +9,6 @@ from twisted.internet import defer, reactor
 from foolscap.api import fireEventually
 from allmydata.util.deferredutil import for_items
 
-from twisted.application import service
 from twisted.python.failure import Failure
 from foolscap.logging.log import OPERATIONAL, INFREQUENT, WEIRD
 from foolscap.logging.web import LogEvent
@@ -66,9 +65,24 @@ class FakeStatsProvider:
         pass
 
 
-class BucketTestMixin:
+class ServiceParentMixin:
+    def setUp(self):
+        self.sparent = LoggingServiceParent()
+        self.sparent.startService()
+        self._lease_secret = itertools.count()
+
+    def tearDown(self):
+        return self.sparent.stopService()
+
+
+class WorkdirMixin:
+    def workdir(self, name):
+        return os.path.join("storage", self.__class__.__name__, name)
+
+
+class BucketTestMixin(WorkdirMixin):
     def make_workdir(self, name):
-        basedir = os.path.join("storage", self.__class__.__name__, name)
+        basedir = self.workdir(name)
         tmpdir = os.path.join(basedir, "tmp")
         incoming = os.path.join(tmpdir, "bucket")
         final = os.path.join(basedir, "bucket")
@@ -310,10 +324,7 @@ class BucketProxy(BucketTestMixin, unittest.TestCase):
                                        0x44, WriteBucketProxy_v2, ReadBucketProxy)
 
 
-class Seek(unittest.TestCase):
-    def workdir(self, name):
-        return os.path.join("storage", self.__class__.__name__, name)
-
+class Seek(unittest.TestCase, WorkdirMixin):
     def test_seek(self):
         basedir = self.workdir("test_seek")
         fileutil.make_dirs(basedir)
@@ -339,10 +350,7 @@ class Seek(unittest.TestCase):
             f2.close()
 
 
-class CloudCommon(unittest.TestCase, ShouldFailMixin):
-    def workdir(self, name):
-        return os.path.join("storage", self.__class__.__name__, name)
-
+class CloudCommon(unittest.TestCase, ShouldFailMixin, WorkdirMixin):
     def test_concat(self):
         x = deque([[1, 2], (), xrange(3, 6)])
         self.failUnlessEqual(cloud_common.concat(x), [1, 2, 3, 4, 5])
@@ -392,26 +400,6 @@ class CloudCommon(unittest.TestCase, ShouldFailMixin):
 
 
 class ServerMixin:
-    def setUp(self):
-        self.sparent = LoggingServiceParent()
-        self.sparent.startService()
-        self._lease_secret = itertools.count()
-
-    def tearDown(self):
-        return self.sparent.stopService()
-
-
-    def workdir(self, name):
-        return os.path.join("storage", self.__class__.__name__, name)
-
-    # XXX moved to With*
-    #def create(self, name, reserved_space=0, klass=StorageServer):
-    #    workdir = self.workdir(name)
-    #    server = klass(workdir, "\x00" * 20, reserved_space=reserved_space,
-    #                   stats_provider=FakeStatsProvider())
-    #    server.setServiceParent(self.sparent)
-    #    return server
-
     def allocate(self, account, storage_index, sharenums, size, canary=None):
         # These secrets are not used, but clients still provide them.
         renew_secret = hashutil.tagged_hash("blah", "%d" % self._lease_secret.next())
@@ -792,8 +780,8 @@ class ServerTest(ServerMixin, ShouldFailMixin):
                 self.failUnlessEqual(a.renewal_time, b.renewal_time)
                 self.failUnlessEqual(a.expiration_time, b.expiration_time)
 
-    def OFF_test_leases(self):
-        server = self.create("test_leases")
+    def OFF_test_immutable_leases(self):
+        server = self.create("test_immutable_leases")
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
 
@@ -850,18 +838,6 @@ class ServerTest(ServerMixin, ShouldFailMixin):
 
 
 class MutableServerMixin:
-    def setUp(self):
-        self.sparent = LoggingServiceParent()
-        self.sparent.startService()
-        self._lease_secret = itertools.count()
-
-    def tearDown(self):
-        return self.sparent.stopService()
-
-
-    def workdir(self, name):
-        return os.path.join("storage", self.__class__.__name__, name)
-
     def write_enabler(self, we_tag):
         return hashutil.tagged_hash("we_blah", we_tag)
 
@@ -1439,7 +1415,7 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
         return d
 
 
-class ServerWithNullBackend(ServerMixin, unittest.TestCase):
+class ServerWithNullBackend(ServiceParentMixin, WorkdirMixin, ServerMixin, unittest.TestCase):
     def test_null_backend(self):
         workdir = self.workdir("test_null_backend")
         backend = NullBackend()
@@ -1468,15 +1444,16 @@ class ServerWithNullBackend(ServerMixin, unittest.TestCase):
         return d
 
 
-class WithMockCloudBackend:
-    def create(self, name, readonly=False, reserved_space=0, klass=StorageServer):
+class WithMockCloudBackend(ServiceParentMixin, WorkdirMixin):
+    def create(self, name, detached=False, readonly=False, reserved_space=0, klass=StorageServer):
         assert not readonly
         workdir = self.workdir(name)
         self._container = MockContainer(workdir)
         backend = CloudBackend(self._container)
         server = klass("\x00" * 20, backend, workdir,
                        stats_provider=FakeStatsProvider())
-        server.setServiceParent(self.sparent)
+        if not detached:
+            server.setServiceParent(self.sparent)
         return server
 
     def reset_load_store_counts(self):
@@ -1487,13 +1464,14 @@ class WithMockCloudBackend:
                              (expected_load_count, expected_store_count))
 
 
-class WithDiskBackend:
-    def create(self, name, readonly=False, reserved_space=0, klass=StorageServer):
+class WithDiskBackend(ServiceParentMixin, WorkdirMixin):
+    def create(self, name, detached=False, readonly=False, reserved_space=0, klass=StorageServer):
         workdir = self.workdir(name)
         backend = DiskBackend(workdir, readonly=readonly, reserved_space=reserved_space)
         server = klass("\x00" * 20, backend, workdir,
                        stats_provider=FakeStatsProvider())
-        server.setServiceParent(self.sparent)
+        if not detached:
+            server.setServiceParent(self.sparent)
         return server
 
     def reset_load_store_counts(self):
@@ -1503,9 +1481,9 @@ class WithDiskBackend:
         pass
 
 
-class ServerWithMockCloudBackend(ServerTest, WithMockCloudBackend, unittest.TestCase):
+class ServerWithMockCloudBackend(WithMockCloudBackend, ServerTest, unittest.TestCase):
     def setUp(self):
-        ServerTest.setUp(self)
+        ServiceParentMixin.setUp(self)
 
         # A smaller chunk size causes the tests to exercise more cases in the chunking implementation.
         self.patch(cloud_common, 'PREFERRED_CHUNK_SIZE', 500)
@@ -1575,7 +1553,7 @@ class ServerWithMockCloudBackend(ServerTest, WithMockCloudBackend, unittest.Test
         return d
 
 
-class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
+class ServerWithDiskBackend(WithDiskBackend, ServerTest, unittest.TestCase):
     # The following tests are for behaviour that is only supported by a disk backend.
 
     def test_readonly(self):
@@ -1881,9 +1859,9 @@ class ServerWithDiskBackend(ServerTest, WithDiskBackend, unittest.TestCase):
         return d
 
 
-class MutableServerWithMockCloudBackend(MutableServerTest, WithMockCloudBackend, unittest.TestCase):
+class MutableServerWithMockCloudBackend(WithMockCloudBackend, MutableServerTest, unittest.TestCase):
     def setUp(self):
-        MutableServerTest.setUp(self)
+        ServiceParentMixin.setUp(self)
 
         # A smaller chunk size causes the tests to exercise more cases in the chunking implementation.
         self.patch(cloud_common, 'PREFERRED_CHUNK_SIZE', 500)
@@ -1896,7 +1874,7 @@ class MutableServerWithMockCloudBackend(MutableServerTest, WithMockCloudBackend,
     test_bad_magic.todo = "The cloud backend hasn't been modified to fix ticket #1566."
 
 
-class MutableServerWithDiskBackend(MutableServerTest, WithDiskBackend, unittest.TestCase):
+class MutableServerWithDiskBackend(WithDiskBackend, MutableServerTest, unittest.TestCase):
 
     # The following tests are for behaviour that is only supported by a disk backend.
 
@@ -2002,11 +1980,11 @@ class MutableServerWithDiskBackend(MutableServerTest, WithDiskBackend, unittest.
         return d
 
 
-class MDMFProxies(unittest.TestCase, ShouldFailMixin):
-    def setUp(self):
-        self.sparent = LoggingServiceParent()
+class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
+    def init(self, name):
         self._lease_secret = itertools.count()
-        self.aa = self.create("MDMFProxies storage test server")
+        self.server = self.create(name)
+        self.aa = self.server.get_accountant().get_anonymous_account()
         self.rref = RemoteBucket()
         self.rref.target = self.aa
         self.secrets = (self.write_enabler("we_secret"),
@@ -2032,11 +2010,6 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         # header.
         self.salt_hash_tree_s = self.serialize_blockhashes(self.salt_hash_tree[1:])
 
-    def tearDown(self):
-        self.sparent.stopService()
-        shutil.rmtree(self.workdir("MDMFProxies storage test server"))
-
-
     def write_enabler(self, we_tag):
         return hashutil.tagged_hash("we_blah", we_tag)
 
@@ -2045,16 +2018,6 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
 
     def cancel_secret(self, tag):
         return hashutil.tagged_hash("cancel_blah", str(tag))
-
-    def workdir(self, name):
-        basedir = os.path.join("storage", "MutableServer", name)
-        return basedir
-
-    def create(self, name):
-        workdir = self.workdir(name)
-        server = StorageServer(workdir, "\x00" * 20)
-        server.setServiceParent(self.sparent)
-        return server.get_accountant().get_anonymous_account()
 
     def build_test_mdmf_share(self, tail_segment=False, empty=False):
         # Start with the checkstring
@@ -2171,8 +2134,9 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         tws = {}
         tws[0] = (testvs, [(0, data)], None)
         readv = [(0, 1)]
-        results = write(storage_index, self.secrets, tws, readv)
-        self.failUnless(results[0])
+        d = write(storage_index, self.secrets, tws, readv)
+        d.addCallback(lambda res: self.failUnless(res[0]))
+        return d
 
     def build_test_sdmf_share(self, empty=False):
         if empty:
@@ -2236,15 +2200,19 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         tws = {}
         tws[0] = (testvs, [(0, share)], None)
         readv = []
-        results = write(storage_index, self.secrets, tws, readv)
-        self.failUnless(results[0])
+        d = write(storage_index, self.secrets, tws, readv)
+        d.addCallback(lambda res: self.failUnless(res[0]))
+        return d
 
 
     def test_read(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_read")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        # Check that every method equals what we expect it to.
         d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
+
+        # Check that every method equals what we expect it to.
         def _check_block_and_salt((block, salt)):
             self.failUnlessEqual(block, self.block)
             self.failUnlessEqual(salt, self.salt)
@@ -2310,9 +2278,13 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_read_with_different_tail_segment_size(self):
-        self.write_test_share_to_server("si1", tail_segment=True)
+        self.init("test_read_with_different_tail_segment_size")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.get_block_and_salt(5)
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1", tail_segment=True))
+
+        d.addCallback(lambda ign: mr.get_block_and_salt(5))
         def _check_tail_segment(results):
             block, salt = results
             self.failUnlessEqual(len(block), 1)
@@ -2321,9 +2293,11 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_get_block_with_invalid_segnum(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_get_block_with_invalid_segnum")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
         d.addCallback(lambda ignored:
             self.shouldFail(LayoutInvalid, "test invalid segnum",
                             None,
@@ -2331,9 +2305,12 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_get_encoding_parameters_first(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_get_encoding_parameters_first")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.get_encoding_parameters()
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.get_encoding_parameters())
         def _check_encoding_parameters((k, n, segment_size, datalen)):
             self.failUnlessEqual(k, 3)
             self.failUnlessEqual(n, 10)
@@ -2343,30 +2320,41 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_get_seqnum_first(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_get_seqnum_first")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.get_seqnum()
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.get_seqnum())
         d.addCallback(lambda seqnum:
             self.failUnlessEqual(seqnum, 0))
         return d
 
     def test_get_root_hash_first(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_root_hash_first")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.get_root_hash()
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.get_root_hash())
         d.addCallback(lambda root_hash:
             self.failUnlessEqual(root_hash, self.root_hash))
         return d
 
     def test_get_checkstring_first(self):
-        self.write_test_share_to_server("si1")
+        self.init("test_checkstring_first")
+
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
-        d = mr.get_checkstring()
+        d = defer.succeed(None)
+        d.addCallback(lambda ign: self.write_test_share_to_server("si1"))
+        d.addCallback(lambda ign: mr.get_checkstring())
         d.addCallback(lambda checkstring:
             self.failUnlessEqual(checkstring, self.checkstring))
         return d
 
     def test_write_read_vectors(self):
+        self.init("test_write_read_vectors")
+
         # When writing for us, the storage server will return to us a
         # read vector, along with its result. If a write fails because
         # the test vectors failed, this read vector can help us to
@@ -2406,6 +2394,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_private_key_after_share_hash_chain(self):
+        self.init("test_private_key_after_share_hash_chain")
+
         mw = self._make_new_mw("si1", 0)
         d = defer.succeed(None)
         for i in xrange(6):
@@ -2424,6 +2414,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_signature_after_verification_key(self):
+        self.init("test_signature_after_verification_key")
+
         mw = self._make_new_mw("si1", 0)
         d = defer.succeed(None)
         # Put everything up to and including the verification key.
@@ -2450,6 +2442,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_uncoordinated_write(self):
+        self.init("test_uncoordinated_write")
+
         # Make two mutable writers, both pointing to the same storage
         # server, both at the same storage index, and try writing to the
         # same share.
@@ -2482,6 +2476,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_invalid_salt_size(self):
+        self.init("test_invalid_salt_size")
+
         # Salts need to be 16 bytes in size. Writes that attempt to
         # write more or less than this should be rejected.
         mw = self._make_new_mw("si1", 0)
@@ -2500,6 +2496,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_write_test_vectors(self):
+        self.init("test_write_test_vectors")
+
         # If we give the write proxy a bogus test vector at
         # any point during the process, it should fail to write when we
         # tell it to write.
@@ -2543,6 +2541,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
 
 
     def test_write(self):
+        self.init("test_write")
+
         # This translates to a file with 6 6-byte segments, and with 2-byte
         # blocks.
         mw = self._make_new_mw("si1", 0)
@@ -2662,6 +2662,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return mw
 
     def test_write_rejected_with_too_many_blocks(self):
+        self.init("test_write_rejected_with_too_many_blocks")
+
         mw = self._make_new_mw("si0", 0)
 
         # Try writing too many blocks. We should not be able to write
@@ -2678,6 +2680,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_write_rejected_with_invalid_salt(self):
+        self.init("test_write_rejected_with_invalid_salt")
+
         # Try writing an invalid salt. Salts are 16 bytes -- any more or
         # less should cause an error.
         mw = self._make_new_mw("si1", 0)
@@ -2689,6 +2693,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_write_rejected_with_invalid_root_hash(self):
+        self.init("test_write_rejected_with_invalid_root_hash")
+
         # Try writing an invalid root hash. This should be SHA256d, and
         # 32 bytes long as a result.
         mw = self._make_new_mw("si2", 0)
@@ -2714,6 +2720,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_write_rejected_with_invalid_blocksize(self):
+        self.init("test_write_rejected_with_invalid_blocksize")
+
         # The blocksize implied by the writer that we get from
         # _make_new_mw is 2bytes -- any more or any less than this
         # should be cause for failure, unless it is the tail segment, in
@@ -2747,6 +2755,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_write_enforces_order_constraints(self):
+        self.init("test_write_enforces_order_constraints")
+
         # We require that the MDMFSlotWriteProxy be interacted with in a
         # specific way.
         # That way is:
@@ -2831,6 +2841,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_end_to_end(self):
+        self.init("test_end_to_end")
+
         mw = self._make_new_mw("si1", 0)
         # Write a share using the mutable writer, and make sure that the
         # reader knows how to read everything back to us.
@@ -2914,6 +2926,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_is_sdmf(self):
+        self.init("test_is_sdmf")
+
         # The MDMFSlotReadProxy should also know how to read SDMF files,
         # since it will encounter them on the grid. Callers use the
         # is_sdmf method to test this.
@@ -2925,6 +2939,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_reads_sdmf(self):
+        self.init("test_reads_sdmf")
+
         # The slot read proxy should, naturally, know how to tell us
         # about data in the SDMF format
         self.write_sdmf_share_to_server("si1")
@@ -2994,6 +3010,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_only_reads_one_segment_sdmf(self):
+        self.init("test_only_reads_one_segment_sdmf")
+
         # SDMF shares have only one segment, so it doesn't make sense to
         # read more segments than that. The reader should know this and
         # complain if we try to do that.
@@ -3011,6 +3029,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_read_with_prefetched_mdmf_data(self):
+        self.init("test_read_with_prefetched_mdmf_data")
+
         # The MDMFSlotReadProxy will prefill certain fields if you pass
         # it data that you have already fetched. This is useful for
         # cases like the Servermap, which prefetches ~2kb of data while
@@ -3077,6 +3097,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_read_with_prefetched_sdmf_data(self):
+        self.init("test_read_with_prefetched_sdmf_data")
+
         sdmf_data = self.build_test_sdmf_share()
         self.write_sdmf_share_to_server("si1")
         def _make_mr(ignored, length):
@@ -3140,6 +3162,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_read_with_empty_mdmf_file(self):
+        self.init("test_read_with_empty_mdmf_file")
+
         # Some tests upload a file with no contents to test things
         # unrelated to the actual handling of the content of the file.
         # The reader should behave intelligently in these cases.
@@ -3168,6 +3192,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_read_with_empty_sdmf_file(self):
+        self.init("test_read_with_empty_sdmf_file")
+
         self.write_sdmf_share_to_server("si1", empty=True)
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         # We should be able to get the encoding parameters, and they
@@ -3193,6 +3219,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_verinfo_with_sdmf_file(self):
+        self.init("test_verinfo_with_sdmf_file")
+
         self.write_sdmf_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         # We should be able to get the version information.
@@ -3233,6 +3261,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_verinfo_with_mdmf_file(self):
+        self.init("test_verinfo_with_mdmf_file")
+
         self.write_test_share_to_server("si1")
         mr = MDMFSlotReadProxy(self.rref, "si1", 0)
         d = defer.succeed(None)
@@ -3271,6 +3301,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_sdmf_writer(self):
+        self.init("test_sdmf_writer")
+
         # Go through the motions of writing an SDMF share to the storage
         # server. Then read the storage server to see that the share got
         # written in the way that we think it should have.
@@ -3314,6 +3346,8 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
     def test_sdmf_writer_preexisting_share(self):
+        self.init("test_sdmf_writer_preexisting_share")
+
         data = self.build_test_sdmf_share()
         self.write_sdmf_share_to_server("si1")
 
@@ -3372,26 +3406,7 @@ class MDMFProxies(unittest.TestCase, ShouldFailMixin):
         return d
 
 
-class Stats(unittest.TestCase):
-    def setUp(self):
-        self.sparent = LoggingServiceParent()
-        self._lease_secret = itertools.count()
-
-    def tearDown(self):
-        return self.sparent.stopService()
-
-
-    def workdir(self, name):
-        basedir = os.path.join("storage", "Server", name)
-        return basedir
-
-    def create(self, name):
-        workdir = self.workdir(name)
-        server = StorageServer(workdir, "\x00" * 20)
-        server.setServiceParent(self.sparent)
-        return server
-
-
+class Stats(WithDiskBackend, unittest.TestCase):
     def test_latencies(self):
         server = self.create("test_latencies")
         for i in range(10000):
@@ -3465,19 +3480,9 @@ def remove_tags(s):
     return s
 
 
-class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
-    def setUp(self):
-        self.s = service.MultiService()
-        self.s.startService()
-
-    def tearDown(self):
-        return self.s.stopService()
-
-
+class BucketCounterTest(WithDiskBackend, CrawlerTestMixin, ReallyEqualMixin, unittest.TestCase):
     def test_bucket_counter(self):
-        basedir = "storage/BucketCounter/bucket_counter"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
+        server = self.create("test_bucket_counter", detached=True)
         bucket_counter = server.bucket_counter
 
         # finish as fast as possible
@@ -3486,7 +3491,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
 
         d = server.bucket_counter.set_hook('after_prefix')
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         w = StorageStatus(server)
 
@@ -3529,9 +3534,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
         return d
 
     def test_bucket_counter_cleanup(self):
-        basedir = "storage/BucketCounter/bucket_counter_cleanup"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
+        server = self.create("test_bucket_counter_cleanup", detached=True)
         bucket_counter = server.bucket_counter
 
         # finish as fast as possible
@@ -3540,7 +3543,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
 
         d = bucket_counter.set_hook('after_prefix')
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         def _after_first_prefix(prefix):
             bucket_counter.save_state()
@@ -3568,9 +3571,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
         return d
 
     def test_bucket_counter_eta(self):
-        basedir = "storage/BucketCounter/bucket_counter_eta"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
+        server = self.create("test_bucket_counter_eta", detached=True)
         bucket_counter = server.bucket_counter
 
         # finish as fast as possible
@@ -3579,7 +3580,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
 
         d = bucket_counter.set_hook('after_prefix')
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         w = StorageStatus(server)
 
@@ -3602,15 +3603,7 @@ class BucketCounterTest(unittest.TestCase, CrawlerTestMixin, ReallyEqualMixin):
         return d
 
 
-class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMixin, ReallyEqualMixin):
-    def setUp(self):
-        self.s = service.MultiService()
-        self.s.startService()
-
-    def tearDown(self):
-        return self.s.stopService()
-
-
+class AccountingCrawlerTest(WithDiskBackend, CrawlerTestMixin, WebRenderingMixin, ReallyEqualMixin, unittest.TestCase):
     def make_shares(self, server):
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
@@ -3663,10 +3656,10 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         self.cancel_secrets = [cs0, cs1, cs1a, cs2, cs3, cs3a]
 
     def test_basic(self):
-        basedir = "storage/AccountingCrawler/basic"
-        fileutil.make_dirs(basedir)
+        server = self.create("test_basic", detached=True)
+
         ep = ExpirationPolicy(enabled=False)
-        server = StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
+        server.set_expiration_policy(ep)
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
 
@@ -3696,7 +3689,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         self.failUnlessIn("history", initial_state)
         self.failUnlessEqual(initial_state["history"], {})
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         DAY = 24*60*60
 
@@ -3801,13 +3794,13 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         return d
 
     def test_expire_age(self):
-        basedir = "storage/AccountingCrawler/expire_age"
-        fileutil.make_dirs(basedir)
+        server = self.create("test_expire_age", detached=True)
+
         # setting expiration_time to 2000 means that any lease which is more
         # than 2000s old will be expired.
         now = time.time()
         ep = ExpirationPolicy(enabled=True, mode="age", override_lease_duration=2000)
-        server = StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
+        server.set_expiration_policy(ep)
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
 
@@ -3858,7 +3851,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         # mutable_si_3 gets an extra lease
         sa.add_or_renew_lease(mutable_si_3,   0, new_renewal_time, new_expiration_time)
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         # now examine the web status right after the 'aa' prefix has been processed.
         d = self._after_prefix(None, 'aa', ac)
@@ -3920,14 +3913,14 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         return d
 
     def test_expire_cutoff_date(self):
-        basedir = "storage/AccountingCrawler/expire_cutoff_date"
-        fileutil.make_dirs(basedir)
+        server = self.create("test_expire_cutoff_date", detached=True)
+
         # setting cutoff-date to 2000 seconds ago means that any lease which
         # is more than 2000s old will be expired.
         now = time.time()
         then = int(now - 2000)
         ep = ExpirationPolicy(enabled=True, mode="cutoff-date", cutoff_date=then)
-        server = StorageServer(basedir, "\x00" * 20, expiration_policy=ep)
+        server.set_expiration_policy(ep)
         aa = server.get_accountant().get_anonymous_account()
         sa = server.get_accountant().get_starter_account()
 
@@ -3978,7 +3971,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         # mutable_si_3 gets an extra lease
         sa.add_or_renew_lease(mutable_si_3,   0, new_renewal_time, new_expiration_time)
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         # now examine the web status right after the 'aa' prefix has been processed.
         d = self._after_prefix(None, 'aa', ac)
@@ -4067,9 +4060,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         self.failUnlessEqual(p("2009-03-18"), 1237334400)
 
     def test_limited_history(self):
-        basedir = "storage/AccountingCrawler/limited_history"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
+        server = self.create("test_limited_history", detached=True)
 
         # finish as fast as possible
         RETAINED = 2
@@ -4084,7 +4075,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         # create a few shares, with some leases on them
         self.make_shares(server)
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         d = ac.set_hook('after_cycle')
         def _after_cycle(cycle):
@@ -4102,9 +4093,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         return d
 
     def OFF_test_unpredictable_future(self):
-        basedir = "storage/AccountingCrawler/unpredictable_future"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
+        server = self.create("test_unpredictable_future", detached=True)
 
         # make it start sooner than usual.
         ac = server.get_accounting_crawler()
@@ -4113,7 +4102,7 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
 
         self.make_shares(server)
 
-        server.setServiceParent(self.s)
+        server.setServiceParent(self.sparent)
 
         d = fireEventually()
         def _check(ignored):
@@ -4150,33 +4139,22 @@ class AccountingCrawlerTest(unittest.TestCase, CrawlerTestMixin, WebRenderingMix
         return d
 
 
-class WebStatus(unittest.TestCase, WebRenderingMixin):
-    def setUp(self):
-        self.s = service.MultiService()
-        self.s.startService()
-
-    def tearDown(self):
-        return self.s.stopService()
-
-
+class WebStatus(WithDiskBackend, WebRenderingMixin, unittest.TestCase):
     def test_no_server(self):
         w = StorageStatus(None)
         html = w.renderSynchronously()
         self.failUnlessIn("<h1>No Storage Server Running</h1>", html)
 
     def test_status(self):
-        basedir = "storage/WebStatus/status"
-        fileutil.make_dirs(basedir)
-        nodeid = "\x00" * 20
-        server = StorageServer(basedir, nodeid)
-        server.setServiceParent(self.s)
+        server = self.create("test_status")
+
         w = StorageStatus(server, "nickname")
         d = self.render1(w)
         def _check_html(html):
             self.failUnlessIn("<h1>Storage Server Status</h1>", html)
             s = remove_tags(html)
             self.failUnlessIn("Server Nickname: nickname", s)
-            self.failUnlessIn("Server Nodeid: %s"  % base32.b2a(nodeid), s)
+            self.failUnlessIn("Server Nodeid: %s"  % base32.b2a(server.get_serverid()), s)
             self.failUnlessIn("Accepting new shares: Yes", s)
             self.failUnlessIn("Reserved space: - 0 B (0)", s)
         d.addCallback(_check_html)
@@ -4202,10 +4180,8 @@ class WebStatus(unittest.TestCase, WebRenderingMixin):
 
         # Some platforms may have no disk stats API. Make sure the code can handle that
         # (test runs on all platforms).
-        basedir = "storage/WebStatus/status_no_disk_stats"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
-        server.setServiceParent(self.s)
+        server = self.create("test_status_no_disk_stats")
+
         w = StorageStatus(server)
         html = w.renderSynchronously()
         self.failUnlessIn("<h1>Storage Server Status</h1>", html)
@@ -4221,10 +4197,8 @@ class WebStatus(unittest.TestCase, WebRenderingMixin):
 
         # If the API to get disk stats exists but a call to it fails, then the status should
         # show that no shares will be accepted, and get_available_space() should be 0.
-        basedir = "storage/WebStatus/status_bad_disk_stats"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20)
-        server.setServiceParent(self.s)
+        server = self.create("test_status_bad_disk_stats")
+
         w = StorageStatus(server)
         html = w.renderSynchronously()
         self.failUnlessIn("<h1>Storage Server Status</h1>", html)
@@ -4251,11 +4225,9 @@ class WebStatus(unittest.TestCase, WebRenderingMixin):
             'avail': avail,
         }
 
-        basedir = "storage/WebStatus/status_right_disk_stats"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20, reserved_space=reserved_space)
-        expecteddir = server.sharedir
-        server.setServiceParent(self.s)
+        server = self.create("test_status_right_disk_stats")
+        expecteddir = server.backend._sharedir
+
         w = StorageStatus(server)
         html = w.renderSynchronously()
 
@@ -4273,10 +4245,8 @@ class WebStatus(unittest.TestCase, WebRenderingMixin):
         self.failUnlessEqual(server.get_available_space(), 2*GB)
 
     def test_readonly(self):
-        basedir = "storage/WebStatus/readonly"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20, readonly_storage=True)
-        server.setServiceParent(self.s)
+        server = self.create("test_readonly", readonly=True)
+
         w = StorageStatus(server)
         html = w.renderSynchronously()
         self.failUnlessIn("<h1>Storage Server Status</h1>", html)
@@ -4284,21 +4254,8 @@ class WebStatus(unittest.TestCase, WebRenderingMixin):
         self.failUnlessIn("Accepting new shares: No", s)
 
     def test_reserved(self):
-        basedir = "storage/WebStatus/reserved"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20, reserved_space=10e6)
-        server.setServiceParent(self.s)
-        w = StorageStatus(server)
-        html = w.renderSynchronously()
-        self.failUnlessIn("<h1>Storage Server Status</h1>", html)
-        s = remove_tags(html)
-        self.failUnlessIn("Reserved space: - 10.00 MB (10000000)", s)
+        server = self.create("test_reserved", reserved_space=10e6)
 
-    def test_huge_reserved(self):
-        basedir = "storage/WebStatus/reserved"
-        fileutil.make_dirs(basedir)
-        server = StorageServer(basedir, "\x00" * 20, reserved_space=10e6)
-        server.setServiceParent(self.s)
         w = StorageStatus(server)
         html = w.renderSynchronously()
         self.failUnlessIn("<h1>Storage Server Status</h1>", html)
