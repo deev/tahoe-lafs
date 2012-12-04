@@ -406,6 +406,12 @@ class IShareSet(Interface):
         share exists, or fails with IndexError otherwise.
         """
 
+    def delete_share(shnum):
+        """
+        Delete a stored share. Returns a Deferred that fires when complete.
+        This does not delete incoming shares.
+        """
+
     def has_incoming(shnum):
         """
         Returns True if this shareset has an incoming (partial) share with this

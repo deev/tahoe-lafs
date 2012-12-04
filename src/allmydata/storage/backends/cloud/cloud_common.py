@@ -87,6 +87,30 @@ class IContainer(Interface):
         """
 
 
+def delete_chunks(container, share_key, from_chunknum=0):
+    d = container.list_objects(prefix=share_key)
+    def _delete(res):
+        def _suppress_404(f):
+            e = f.trap(container.ServiceError)
+            if e.get_error_code() != 404:
+                return f
+
+        d2 = defer.succeed(None)
+        for item in res.contents:
+            key = item.key
+            _assert(key.startswith(share_key), key=key, share_key=share_key)
+            path = key.split('/')
+            if len(path) == 4:
+                (_, _, chunknumstr) = path[3].partition('.')
+                chunknumstr = chunknumstr or "0"
+                if NUM_RE.match(chunknumstr) and int(chunknumstr) >= from_chunknum:
+                    d2.addCallback(lambda ign, key=key: container.delete_object(key))
+                    d2.addErrback(_suppress_404)
+        return d2
+    d.addCallback(_delete)
+    return d
+
+
 class CloudShareBase(object):
     implements(IShareBase)
     """
@@ -139,30 +163,7 @@ class CloudShareBase(object):
 
     def unlink(self):
         self._discard()
-        return self._delete_chunks()
-
-    def _delete_chunks(self, from_chunknum=0):
-        d = self._container.list_objects(prefix=self._key)
-        def _delete(res):
-            def _suppress_404(f):
-                e = f.trap(self._container.ServiceError)
-                if e.get_error_code() != 404:
-                    return f
-
-            d2 = defer.succeed(None)
-            for item in res.contents:
-                key = item.key
-                _assert(key.startswith(self._key), key=key, self_key=self._key)
-                path = key.split('/')
-                if len(path) == 4:
-                    (_, _, chunknumstr) = path[3].partition('.')
-                    chunknumstr = chunknumstr or "0"
-                    if NUM_RE.match(chunknumstr) and int(chunknumstr) >= from_chunknum:
-                        d2.addCallback(lambda ign, key=key: self._container.delete_object(key))
-                        d2.addErrback(_suppress_404)
-            return d2
-        d.addCallback(_delete)
-        return d
+        return delete_chunks(self._container, self._key)
 
     def _get_path(self):
         """

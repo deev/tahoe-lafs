@@ -14,7 +14,7 @@ from allmydata.storage.bucket import BucketWriter
 from allmydata.storage.backends.base import Backend, ShareSet
 from allmydata.storage.backends.cloud.immutable import ImmutableCloudShareForReading, ImmutableCloudShareForWriting
 from allmydata.storage.backends.cloud.mutable import MutableCloudShare
-from allmydata.storage.backends.cloud.cloud_common import get_share_key
+from allmydata.storage.backends.cloud.cloud_common import get_share_key, delete_chunks
 from allmydata.mutable.layout import MUTABLE_MAGIC
 
 
@@ -145,6 +145,10 @@ class CloudShareSet(ShareSet):
             return get_cloud_share(self._container, self.get_storage_index(), shnum, total_size)
         d.addCallback(_get_share)
         return d
+
+    def delete_share(self, shnum):
+        key = "%s%d" % (self._key, shnum)
+        return delete_chunks(self._container, key)
 
     def has_incoming(self, shnum):
         return (self.get_storage_index(), shnum) in self._incomingset

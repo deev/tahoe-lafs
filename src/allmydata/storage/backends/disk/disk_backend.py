@@ -153,6 +153,10 @@ class DiskShareSet(ShareSet):
         return get_disk_share(os.path.join(self._sharehomedir, str(shnum)),
                               self.get_storage_index(), shnum)
 
+    def delete_share(self, shnum):
+        fileutil.remove(os.path.join(self._sharehomedir, str(shnum)))
+        return defer.succeed(None)
+
     def has_incoming(self, shnum):
         if self._incominghomedir is None:
             return False

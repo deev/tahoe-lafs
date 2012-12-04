@@ -17,7 +17,7 @@ from allmydata.storage.backends.base import testv_compare
 from allmydata.mutable.layout import MUTABLE_MAGIC, MAX_MUTABLE_SHARE_SIZE
 from allmydata.storage.backends.cloud import cloud_common
 from allmydata.storage.backends.cloud.cloud_common import get_chunk_key, get_zero_chunkdata, \
-     BackpressurePipeline, ChunkCache, CloudShareBase, CloudShareReaderMixin
+     delete_chunks, BackpressurePipeline, ChunkCache, CloudShareBase, CloudShareReaderMixin
 
 
 # Mutable shares have a different layout to immutable shares. See docs/mutable.rst
@@ -297,7 +297,7 @@ class MutableCloudShare(CloudShareBase, CloudShareReaderMixin):
             if self._nchunks < old_nchunks or self._is_oversize:
                 self._is_oversize = False
                 #print "DELETING chunks from", self._nchunks
-                return self._delete_chunks(from_chunknum=self._nchunks)
+                return delete_chunks(self._container, self._key, from_chunknum=self._nchunks)
         d.addCallback(_resize)
 
         d.addCallback(lambda ign: self._pipeline.flush())

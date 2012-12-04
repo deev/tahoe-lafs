@@ -111,7 +111,7 @@ class AccountingCrawler(ShareCrawler):
                 d3 = defer.succeed(None)
                 def _mark_and_delete(ign):
                     self._leasedb.mark_share_as_going(storage_index, shnum)
-                    return self.server.delete_share(storage_index, shnum)
+                    return self.backend.get_shareset(storage_index).delete_share(shnum)
                 d3.addCallback(_mark_and_delete)
                 def _deleted(ign):
                     self._leasedb.remove_deleted_share(storage_index, shnum)

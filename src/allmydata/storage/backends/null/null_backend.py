@@ -66,15 +66,6 @@ class NullShareSet(ShareSet):
         self._immutable_shnums.add(shnum)
         return defer.succeed(None)
 
-    def unlink_shnum(self, shnum):
-        if shnum in self._incoming_shnums:
-            self._incoming_shnums.remove(shnum)
-        if shnum in self._immutable_shnums:
-            self._immutable_shnums.remove(shnum)
-        if shnum in self._mutable_shnums:
-            self._mutable_shnums.remove(shnum)
-        return defer.succeed(None)
-
     def get_overhead(self):
         return 0
 
@@ -96,14 +87,14 @@ class NullShareSet(ShareSet):
             def _not_found(): raise IndexError("no such share %d" % (shnum,))
             return defer.execute(_not_found)
 
-    def renew_lease(self, renew_secret, new_expiration_time):
-        raise IndexError("no such lease to renew")
-
-    def get_leases(self):
-        pass
-
-    def add_or_renew_lease(self, lease_info):
-        pass
+    def delete_share(self, shnum, include_incoming=False):
+        if include_incoming and (shnum in self._incoming_shnums):
+            self._incoming_shnums.remove(shnum)
+        if shnum in self._immutable_shnums:
+            self._immutable_shnums.remove(shnum)
+        if shnum in self._mutable_shnums:
+            self._mutable_shnums.remove(shnum)
+        return defer.succeed(None)
 
     def has_incoming(self, shnum):
         return shnum in self._incoming_shnums
@@ -148,7 +139,7 @@ class NullShareBase(object):
         return 0
 
     def unlink(self):
-        return self.shareset.unlink_shnum(self.shnum)
+        return self.shareset.delete_share(self.shnum, include_incoming=True)
 
     def readv(self, readv):
         datav = []
