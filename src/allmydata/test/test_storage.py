@@ -1414,6 +1414,107 @@ class MutableServerTest(MutableServerMixin, ShouldFailMixin):
             d.addCallback(_check_gone)
         return d
 
+    def compare_leases(self, leases_a, leases_b, with_timestamps=True):
+        self.failUnlessEqual(len(leases_a), len(leases_b))
+        for i in range(len(leases_a)):
+            a = leases_a[i]
+            b = leases_b[i]
+            self.failUnlessEqual(a.owner_num, b.owner_num)
+            if with_timestamps:
+                self.failUnlessEqual(a.renewal_time, b.renewal_time)
+                self.failUnlessEqual(a.expiration_time, b.expiration_time)
+
+    def test_mutable_leases(self):
+        server = self.create("test_mutable_leases")
+        aa = server.get_accountant().get_anonymous_account()
+        sa = server.get_accountant().get_starter_account()
+
+        def secrets(n):
+            return ( self.write_enabler("we1"),
+                     self.renew_secret("we1-%d" % n),
+                     self.cancel_secret("we1-%d" % n) )
+        data = "".join([ ("%d" % i) * 10 for i in range(10) ])
+        aa_write = aa.remote_slot_testv_and_readv_and_writev
+        sa_write = sa.remote_slot_testv_and_readv_and_writev
+        read = aa.remote_slot_readv
+
+        # There is no such method as remote_cancel_lease -- see ticket #1528.
+        self.failIf(hasattr(aa, 'remote_cancel_lease'),
+                    "aa should not have a 'remote_cancel_lease' method/attribute")
+
+        # create a random non-numeric file in the bucket directory, to
+        # exercise the code that's supposed to ignore those.
+        bucket_dir = os.path.join(self.workdir("test_leases"),
+                                  "shares", storage_index_to_dir("six"))
+        os.makedirs(bucket_dir)
+        fileutil.write(os.path.join(bucket_dir, "ignore_me.txt"),
+                       "you ought to be ignoring me\n")
+
+        create_mutable_disk_share(os.path.join(bucket_dir, "0"), server.get_serverid(),
+                                  secrets(0)[0], storage_index="six", shnum=0)
+
+        aa.add_share("six", 0, 0, SHARETYPE_MUTABLE)
+        # adding a share does not immediately add a lease
+        self.failUnlessEqual(len(aa.get_leases("six")), 0)
+
+        aa.add_or_renew_default_lease("six", 0)
+        self.failUnlessEqual(len(aa.get_leases("six")), 1)
+
+        d = defer.succeed(None)
+
+        d.addCallback(lambda ign: aa_write("si0", secrets(1), {0: ([], [(0,data)], None)}, []))
+        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {})))
+
+        # add-lease on a missing storage index is silently ignored
+        d.addCallback(lambda ign: aa.remote_add_lease("si18", "", ""))
+        d.addCallback(lambda res: self.failUnless(res is None, res))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si18")), 0))
+
+        # create a lease by writing
+        d.addCallback(lambda ign: aa_write("si1", secrets(2), {0: ([], [(0,data)], None)}, []))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
+
+        # renew it directly
+        d.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
+        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
+
+        # now allocate another lease using a different account
+        d.addCallback(lambda ign: sa_write("si1", secrets(3), {0: ([], [(0,data)], None)}, []))
+        def _check(ign):
+            aa_leases = aa.get_leases("si1")
+            sa_leases = sa.get_leases("si1")
+
+            self.failUnlessEqual(len(aa_leases), 1)
+            self.failUnlessEqual(len(sa_leases), 1)
+
+            d2 = defer.succeed(None)
+            d2.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
+            d2.addCallback(lambda ign: self.compare_leases(aa_leases, aa.get_leases("si1"),
+                                                           with_timestamps=False))
+
+            d2.addCallback(lambda ign: sa.remote_renew_lease("si1", "shouldn't matter"))
+            d2.addCallback(lambda ign: self.compare_leases(sa_leases, sa.get_leases("si1"),
+                                                           with_timestamps=False))
+
+            # Get a new copy of the leases, with the current timestamps. Reading
+            # data should leave the timestamps alone.
+            d2.addCallback(lambda ign: aa.get_leases("si1"))
+            def _check2(new_aa_leases):
+                # reading shares should not modify the timestamp
+                d3 = read("si1", [], [(0, 200)])
+                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
+                                                               with_timestamps=False))
+
+                d3.addCallback(lambda ign: aa_write("si1", secrets(2),
+                      {0: ([], [(500, "make me bigger")], None)}, []))
+                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
+                                                               with_timestamps=False))
+                return d3
+            d2.addCallback(_check2)
+            return d2
+        d.addCallback(_check)
+        return d
+
 
 class ServerWithNullBackend(ServiceParentMixin, WorkdirMixin, ServerMixin, unittest.TestCase):
     def test_null_backend(self):
@@ -1875,109 +1976,8 @@ class MutableServerWithMockCloudBackend(WithMockCloudBackend, MutableServerTest,
 
 
 class MutableServerWithDiskBackend(WithDiskBackend, MutableServerTest, unittest.TestCase):
-
-    # The following tests are for behaviour that is only supported by a disk backend.
-
-    def compare_leases(self, leases_a, leases_b, with_timestamps=True):
-        self.failUnlessEqual(len(leases_a), len(leases_b))
-        for i in range(len(leases_a)):
-            a = leases_a[i]
-            b = leases_b[i]
-            self.failUnlessEqual(a.owner_num, b.owner_num)
-            if with_timestamps:
-                self.failUnlessEqual(a.renewal_time, b.renewal_time)
-                self.failUnlessEqual(a.expiration_time, b.expiration_time)
-
-    def test_mutable_leases(self):
-        server = self.create("test_mutable_leases")
-        aa = server.get_accountant().get_anonymous_account()
-        sa = server.get_accountant().get_starter_account()
-
-        def secrets(n):
-            return ( self.write_enabler("we1"),
-                     self.renew_secret("we1-%d" % n),
-                     self.cancel_secret("we1-%d" % n) )
-        data = "".join([ ("%d" % i) * 10 for i in range(10) ])
-        aa_write = aa.remote_slot_testv_and_readv_and_writev
-        sa_write = sa.remote_slot_testv_and_readv_and_writev
-        read = aa.remote_slot_readv
-
-        # There is no such method as remote_cancel_lease -- see ticket #1528.
-        self.failIf(hasattr(aa, 'remote_cancel_lease'),
-                    "aa should not have a 'remote_cancel_lease' method/attribute")
-
-        # create a random non-numeric file in the bucket directory, to
-        # exercise the code that's supposed to ignore those.
-        bucket_dir = os.path.join(self.workdir("test_leases"),
-                                  "shares", storage_index_to_dir("six"))
-        os.makedirs(bucket_dir)
-        fileutil.write(os.path.join(bucket_dir, "ignore_me.txt"),
-                       "you ought to be ignoring me\n")
-
-        create_mutable_disk_share(os.path.join(bucket_dir, "0"), server.get_serverid(),
-                                  secrets(0)[0], storageindex="six", shnum=0)
-
-        aa.add_share("six", 0, 0, SHARETYPE_MUTABLE)
-        # adding a share does not immediately add a lease
-        self.failUnlessEqual(len(aa.get_leases("six")), 0)
-
-        aa.add_or_renew_default_lease("six", 0)
-        self.failUnlessEqual(len(aa.get_leases("six")), 1)
-
-        d = defer.succeed(None)
-
-        d.addCallback(lambda ign: aa_write("si0", secrets(1), {0: ([], [(0,data)], None)}, []))
-        d.addCallback(lambda res: self.failUnlessEqual(res, (True, {})))
-
-        # add-lease on a missing storage index is silently ignored
-        d.addCallback(lambda ign: aa.remote_add_lease("si18", "", ""))
-        d.addCallback(lambda res: self.failUnless(res is None, res))
-        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si18")), 0))
-
-        # create a lease by writing
-        d.addCallback(lambda ign: aa_write("si1", secrets(2), {0: ([], [(0,data)], None)}, []))
-        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
-
-        # renew it directly
-        d.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
-        d.addCallback(lambda ign: self.failUnlessEqual(len(aa.get_leases("si1")), 1))
-
-        # now allocate another lease using a different account
-        d.addCallback(lambda ign: sa_write("si1", secrets(3), {0: ([], [(0,data)], None)}, []))
-        def _check(ign):
-            aa_leases = aa.get_leases("si1")
-            sa_leases = sa.get_leases("si1")
-
-            self.failUnlessEqual(len(aa_leases), 1)
-            self.failUnlessEqual(len(sa_leases), 1)
-
-            d2 = defer.succeed(None)
-            d2.addCallback(lambda ign: aa.remote_renew_lease("si1", secrets(2)[1]))
-            d2.addCallback(lambda ign: self.compare_leases(aa_leases, aa.get_leases("si1"),
-                                                           with_timestamps=False))
-
-            d2.addCallback(lambda ign: sa.remote_renew_lease("si1", "shouldn't matter"))
-            d2.addCallback(lambda ign: self.compare_leases(sa_leases, sa.get_leases("si1"),
-                                                           with_timestamps=False))
-
-            # Get a new copy of the leases, with the current timestamps. Reading
-            # data should leave the timestamps alone.
-            d2.addCallback(lambda ign: aa.get_leases("si1"))
-            def _check2(new_aa_leases):
-                # reading shares should not modify the timestamp
-                d3 = read("si1", [], [(0, 200)])
-                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
-                                                               with_timestamps=False))
-
-                d3.addCallback(lambda ign: aa_write("si1", secrets(2),
-                      {0: ([], [(500, "make me bigger")], None)}, []))
-                d3.addCallback(lambda ign: self.compare_leases(new_aa_leases, aa.get_leases("si1"),
-                                                               with_timestamps=False))
-                return d3
-            d2.addCallback(_check2)
-            return d2
-        d.addCallback(_check)
-        return d
+    # There are no mutable tests specific to a disk backend.
+    pass
 
 
 class MDMFProxies(WithDiskBackend, ShouldFailMixin, unittest.TestCase):
