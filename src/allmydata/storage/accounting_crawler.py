@@ -7,7 +7,7 @@ from allmydata.util.deferredutil import for_items
 from allmydata.util import log
 from allmydata.storage.crawler import ShareCrawler
 from allmydata.storage.common import si_a2b
-from allmydata.storage.leasedb import SHARETYPES, SHARETYPE_UNKNOWN
+from allmydata.storage.leasedb import SHARETYPES, SHARETYPE_UNKNOWN, SHARETYPE_CORRUPTED
 
 
 class AccountingCrawler(ShareCrawler):
@@ -43,16 +43,22 @@ class AccountingCrawler(ShareCrawler):
             d2 = defer.succeed(None)
             for shareset in sharesets:
                 d2.addCallback(lambda ign, shareset=shareset: shareset.get_shares())
-                def _got_some_shares(shares):
-                    for share in shares:
+                def _got_some_shares( (valid, corrupted) ):
+                    for share in valid:
                         shareid = (share.get_storage_index_string(), share.get_shnum())
                         sharetype = SHARETYPE_UNKNOWN  # FIXME
+                        stored_sharemap[shareid] = (share.get_used_space(), sharetype)
+
+                    for share in corrupted:
+                        shareid = (share.get_storage_index_string(), share.get_shnum())
+                        sharetype = SHARETYPE_CORRUPTED
                         stored_sharemap[shareid] = (share.get_used_space(), sharetype)
 
                 d2.addCallback(_got_some_shares)
 
             d2.addCallback(lambda ign: stored_sharemap)
             return d2
+        d.addCallback(_got_sharesets)
 
         def _got_stored_sharemap(stored_sharemap):
             # now check the database for everything in this prefix
