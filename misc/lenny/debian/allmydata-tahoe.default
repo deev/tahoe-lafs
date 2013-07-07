@@ -1,0 +1,17 @@
+# Defaults for tahoelafsd initscript
+# sourced by /etc/init.d/allmydata-tahoe
+# installed at /etc/default/allmydata-tahoe by the maintainer scripts
+
+# Uncomment these to change the default settings in the init.d script
+# USERNAME="tahoelafsd"
+# DAEMONHOME="/var/lib/tahoelafsd/"
+# DAEMON_ARGS=" start $DAEMONHOME"
+
+# By default, Tahoe is unconfigured
+# (this is very unfriendly to non-power users)
+# To configure Tahoe, consider running:
+# tahoe create-client $DAEMONHOME
+
+# Once you've run the above command, set the following line to "TRUE"
+# to have the init.d script start Tahoe
+ENABLED="TRUE"

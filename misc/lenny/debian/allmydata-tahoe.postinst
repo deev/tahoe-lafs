@@ -1,0 +1,45 @@
+# Automatically added by dh_pycentral
+if which pycentral >/dev/null 2>&1; then
+	pycentral pkginstall allmydata-tahoe
+	if grep -qs '^allmydata-tahoe$' /var/lib/pycentral/delayed-pkgs; then
+		sed -i '/^allmydata-tahoe$/d' /var/lib/pycentral/delayed-pkgs
+	fi
+fi
+# End automatically added section
+# Automatically added by dh_pycentral
+if which pycentral >/dev/null 2>&1; then
+	pycentral pkginstall allmydata-tahoe
+	if grep -qs '^allmydata-tahoe$' /var/lib/pycentral/delayed-pkgs; then
+		sed -i '/^allmydata-tahoe$/d' /var/lib/pycentral/delayed-pkgs
+	fi
+fi
+# End automatically added section
+
+# This checks for a tahoelafsd user
+uid=`getend passwd tahoelafsd | cut -d ":" -f 3`
+home=`getent passwd tahoelafsd |cut -d ":" -f 6`
+
+if [ "$uid" ]; then
+    if [ "$home" = "/var/lib/tahoelafsd" ]; then
+        chmod 750 /var/lib/tahoelafs/
+    else
+        echo "tahoelafsd has an incorrect home directory!"
+    fi
+else
+    echo "Adding tahoelafsd group..."
+    addgroup --system tahoelafsd
+    echo "Adding tahoelafsd user..."
+    adduser --disabled-login --system --home /var/lib/tahoelafs \
+            --shell /bin/bash --ingroup tahoelafsd tahoelafsd 
+    echo "Protecting tahoelafsd home directory from snooping eyes"
+    chmod 750 /var/lib/tahoelafs/
+fi
+ddfile ./misc/lenny/debian/allmydata-tahoe.postrm
+unk ./misc/lenny/debian/allmydata-tahoe.postrm 1
+#!/bin/sh -e
+
+if [ "$1" = "purge" ]; then
+    rm -rf /var/lib/tahoelafsd/
+fi
+
+exit 0
