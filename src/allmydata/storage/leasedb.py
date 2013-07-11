@@ -5,6 +5,8 @@ from allmydata.util.assertutil import _assert
 from allmydata.util import dbutil
 from allmydata.storage.common import si_b2a
 
+from twisted.application import service
+
 
 class NonExistentShareError(Exception):
     def __init__(self, si_s, shnum):
@@ -113,7 +115,7 @@ CREATE UNIQUE INDEX `cycle` ON `crawler_history` (`cycle`);
 DAY = 24*60*60
 MONTH = 30*DAY
 
-class LeaseDB:
+class LeaseDB(service.Service):
     ANONYMOUS_ACCOUNTID = 0
     STARTER_LEASE_ACCOUNTID = 1
     STARTER_LEASE_DURATION = 2*MONTH
@@ -125,15 +127,22 @@ class LeaseDB:
         # to time out. For discussion see
         # https://tahoe-lafs.org/pipermail/tahoe-dev/2012-December/007877.html
 
-        (self._sqlite,
-         self._db) = dbutil.get_db(dbfile, create_version=(LEASE_SCHEMA_V1, 1),
-                                   # journal_mode="WAL",
-                                   synchronous="OFF")
-        self._cursor = self._db.cursor()
+        self.dbfile = dbfile
         self.debug = False
         self.retained_history_entries = 10
 
     # share management
+
+    def startService(self):
+        self._db = dbutil.get_db(self.dbfile, create_version=(LEASE_SCHEMA_V1, 1),
+                                   journal_mode="WAL",
+                                   synchronous="NORMAL")[1]
+        self._cursor = self._db.cursor()
+
+    def stopService(self):
+        self._cursor = None
+        self._db.close()
+        self._db = None
 
     def get_shares_for_prefix(self, prefix):
         """

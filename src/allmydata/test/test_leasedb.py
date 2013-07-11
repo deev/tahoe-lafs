@@ -21,15 +21,18 @@ class DB(unittest.TestCase):
     def test_create(self):
         dbfilename = self.make("create")
         l = LeaseDB(dbfilename)
+        l.startService()
         self.failUnlessEqual(set(l.get_all_accounts()), BASE_ACCOUNTS)
 
         # should be able to open an existing one too
         l2 = LeaseDB(dbfilename)
+        l2.startService()
         self.failUnlessEqual(set(l2.get_all_accounts()), BASE_ACCOUNTS)
 
     def test_basic(self):
         dbfilename = self.make("create")
         l = LeaseDB(dbfilename)
+        l.startService()
 
         l.add_new_share('si1', 0, 12345, SHARETYPE_IMMUTABLE)
 
