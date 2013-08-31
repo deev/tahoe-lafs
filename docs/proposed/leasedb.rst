@@ -4,7 +4,7 @@ Lease database design
 =====================
 
 The target audience for this document is developers who wish to understand
-the new lease database (leasedb) planned to be added in Tahoe-LAFS v1.11.0.
+the lease database, “leasedb” (planned to be added in Tahoe-LAFS v1.12).
 
 
 Introduction

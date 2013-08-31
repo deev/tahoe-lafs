@@ -62,5 +62,3 @@ def get_db(dbfile, stderr=sys.stderr,
         raise DBError("Unable to handle %s version %s" % (dbname, version))
 
     return (sqlite3, db)
-
-

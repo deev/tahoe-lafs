@@ -252,13 +252,6 @@ class ShareCrawler(HookMixin, service.MultiService):
         self.timer = self.clock.callLater(self.slow_start, self.start_slice)
         service.MultiService.startService(self)
 
-    def stopService(self):
-        if self.timer:
-            self.timer.cancel()
-            self.timer = None
-        self.save_state()
-        return service.MultiService.stopService(self)
-
     def start_slice(self):
         start_slice = self.clock.seconds()
         self.timer = None

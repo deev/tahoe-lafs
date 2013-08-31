@@ -675,12 +675,6 @@ class ImmutableDirectoryURI(_ImmutableDirectoryBaseURI):
         return ImmutableDirectoryURIVerifier(vcap)
 
 
-class LiteralDirectoryURI(_ImmutableDirectoryBaseURI):
-    BASE_STRING='URI:DIR2-LIT:'
-    BASE_STRING_RE=re.compile('^'+BASE_STRING)
-    BASE_HUMAN_RE=re.compile('^'+OPTIONALHTTPLEAD+'URI'+SEP+'DIR2-LIT'+SEP)
-    INNER_URI_CLASS=LiteralFileURI
-
     def get_verify_cap(self):
         # LIT caps have no verifier, since they aren't distributed
         return None

@@ -32,6 +32,7 @@ from allmydata.test.common_web import HTTPClientGETFactory
 from allmydata.interfaces import IStorageBroker, IServer
 from allmydata.test.common import TEST_RSA_KEY_SIZE
 
+from allmydata.test.clean_pending import CleanPendingMixin
 
 PRINT_TRACEBACKS = False
 
@@ -363,10 +364,11 @@ class NoNetworkGrid(service.MultiService):
                     fileutil.rm_dir(os.path.join(sharedir, prefixdir))
 
 
-class GridTestMixin:
+class GridTestMixin(CleanPendingMixin):
     def setUp(self):
         self.s = service.MultiService()
         self.s.startService()
+        CleanPendingMixin.setUp(self)
 
     def tearDown(self):
         return self.s.stopService()

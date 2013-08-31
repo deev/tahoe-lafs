@@ -34,6 +34,9 @@ class Accountant(service.MultiService):
         self._accounting_crawler = crawler
         crawler.setServiceParent(self)
 
+    def stopService(self):
+        self._leasedb.close()
+
     def get_leasedb(self):
         return self._leasedb
 

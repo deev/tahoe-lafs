@@ -624,6 +624,9 @@ class Help(unittest.TestCase):
         self.failUnlessIn(" [global-opts] admin create-container [NODEDIR]", help)
 
 
+import twisted.internet.base
+twisted.internet.base.DelayedCall.debug = True
+
 class CreateAlias(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def _test_webopen(self, args, expected_url):

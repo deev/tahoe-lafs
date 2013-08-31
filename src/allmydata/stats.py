@@ -7,11 +7,11 @@ from collections import deque
 
 from twisted.internet import reactor
 from twisted.application import service
-from twisted.application.internet import TimerService
 from zope.interface import implements
 from foolscap.api import eventually, DeadReferenceError, Referenceable, Tub
 
 from allmydata.util import log
+from allmydata.util.timer_service import NonStopTimerService
 from allmydata.util.encodingutil import quote_output
 from allmydata.interfaces import RIStatsProvider, RIStatsGatherer, IStatsProducer
 
@@ -85,7 +85,7 @@ class CPUUsageMonitor(service.MultiService):
         eventually(self._set_initial_cpu)
         self.samples = []
         # we provide 1min, 5min, and 15min moving averages
-        TimerService(self.POLL_INTERVAL, self.check).setServiceParent(self)
+        NonStopTimerService(self.POLL_INTERVAL, self.check).setServiceParent(self)
 
     def _set_initial_cpu(self):
         self.initial_cpu = time.clock()
@@ -190,7 +190,7 @@ class StatsGatherer(Referenceable, service.MultiService):
         self.clients = {}
         self.nicknames = {}
 
-        self.timer = TimerService(self.poll_interval, self.poll)
+        self.timer = NonStopTimerService(self.poll_interval, self.poll)
         self.timer.setServiceParent(self)
 
     def get_tubid(self, rref):

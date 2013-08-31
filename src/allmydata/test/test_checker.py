@@ -5,7 +5,7 @@ from twisted.trial import unittest
 from twisted.internet import defer
 
 from allmydata import check_results, uri
-from allmydata.util import base32
+from allmydata.util import base32, clean_pending
 from allmydata.web import check_results as web_check_results
 from allmydata.storage_client import StorageFarmBroker, NativeStorageServer
 from allmydata.monitor import Monitor
@@ -312,7 +312,7 @@ class WebResultsRendering(unittest.TestCase, WebRenderingMixin):
         d.addCallback(_got_lit_results)
         return d
 
-class BalancingAct(GridTestMixin, unittest.TestCase):
+class BalancingAct(GridTestMixin, unittest.TestCase, clean_pending.CleanPendingMixin):
     # test for #1115 regarding the 'count-good-share-hosts' metric
 
     def _print_pretty_shares_chart(self, res):
@@ -386,14 +386,18 @@ class BalancingAct(GridTestMixin, unittest.TestCase):
                                  for sid in self.g.get_all_serverids()])
         d.addCallback(_check_and_repair)
         d.addCallback(_check_counts, 0, 0)
+        d.addBoth(lambda ign: self.clean_pending(required_to_quiesce=False))
         return d
 
 
-class AddLease(GridTestMixin, unittest.TestCase):
-    # test for #875, in which failures in the add-lease call cause
-    # false-negatives in the checker
+class AddLease(GridTestMixin, unittest.TestCase, clean_pending.CleanPendingMixin):
 
     def test_875(self):
+        """
+        test for #875, in which failures in the add-lease call cause
+        false-negatives in the checker
+        """
+
         self.basedir = "checker/AddLease/875"
         self.set_up_grid(num_servers=1)
         c0 = self.g.clients[0]
@@ -437,6 +441,7 @@ class AddLease(GridTestMixin, unittest.TestCase):
         d.addCallback(_check_cr, "immutable-broken")
 
         d.addCallback(lambda ign: self.failUnless(really_did_break))
+        d.addBoth(lambda ign: self.clean_pending(required_to_quiesce=False))
         return d
 
 class CounterHolder(object):
@@ -463,7 +468,7 @@ class MockVRBP(ValidatedReadBucketProxy):
         d.addBoth(_mark_no_longer_active)
         return d
 
-class TooParallel(GridTestMixin, unittest.TestCase):
+class TooParallel(GridTestMixin, unittest.TestCase, clean_pending.CleanPendingMixin):
     # bug #1395: immutable verifier was aggressively parallized, checking all
     # blocks of all shares at the same time, blowing our memory budget and
     # crashing with MemoryErrors on >1GB files.
@@ -509,6 +514,7 @@ class TooParallel(GridTestMixin, unittest.TestCase):
             allmydata.immutable.checker.ValidatedReadBucketProxy = origVRBP
             return res
         d.addBoth(_clean_up)
+        d.addBoth(lambda ign: self.clean_pending(required_to_quiesce=False))
         return d
 
     test_immutable.timeout = 80

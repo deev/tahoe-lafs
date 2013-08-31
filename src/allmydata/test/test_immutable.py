@@ -16,6 +16,8 @@ from allmydata.interfaces import NotEnoughSharesError
 from allmydata.immutable.upload import Data
 from allmydata.immutable.downloader import finder
 
+from allmydata import nodemaker, unknown
+
 class MockNode(object):
     def __init__(self, check_reneging, check_fetch_failed):
         self.got = 0
@@ -61,6 +63,13 @@ class MockNode(object):
     def process_blocks(self, *args, **kwargs):
         if self.finished_d:
             self.finished_d.callback(None)
+
+class TestNodeMaker(unittest.TestCase):
+    def test_basic(self):
+        nm = nodemaker.NodeMaker(None, None, None, None, None, None, None, None)
+        writefilenode = nm.create_from_cap('')
+        self.failUnlessIsInstance(writefilenode, unknown.UnknownNode)
+        # self.failIf(writefilenode.is_mutable())
 
 class TestShareFinder(unittest.TestCase):
     def test_no_reneging_on_no_more_shares_ever(self):

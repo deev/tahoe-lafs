@@ -151,6 +151,8 @@ class LeaseDB(service.Service):
     def stopService(self):
         self._close_db()
 
+    # share management
+
     def get_shares_for_prefix(self, prefix):
         """
         Returns a dict mapping (si_s, shnum) pairs to (used_space, sharetype, state) triples

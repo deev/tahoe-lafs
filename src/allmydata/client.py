@@ -4,7 +4,6 @@ from allmydata import node
 from zope.interface import implements
 from twisted.internet import reactor, defer
 from twisted.application import service
-from twisted.application.internet import TimerService
 from pycryptopp.publickey import rsa
 
 import allmydata
@@ -23,6 +22,7 @@ from allmydata.introducer.client import IntroducerClient
 from allmydata.util import hashutil, base32, pollmixin, log, keyutil, idlib
 from allmydata.util.encodingutil import get_filesystem_encoding, quote_output
 from allmydata.util.time_format import parse_duration, parse_date
+from allmydata.util.timer_service import NonStopTimerService
 from allmydata.stats import StatsProvider
 from allmydata.history import History
 from allmydata.interfaces import IStatsProducer, SDMF_VERSION, MDMF_VERSION
