@@ -123,7 +123,7 @@ bytes will obtain the blocks from storage servers, use erasure-decoding to
 turn them into segments of ciphertext, use the decryption key to convert that
 into plaintext, then emit the plaintext bytes to the output target.
 
-.. _`Merkle Trees`: http://systems.cs.colorado.edu/grunwald/Classes/Fall2003-InformationStorage/Papers/merkle-tree.pdf
+.. _`Merkle Trees`: http://systems.cs.colorado.edu/~grunwald/Classes/Fall2003-InformationStorage/Papers/merkle-tree.pdf
 
 
 Capabilities
