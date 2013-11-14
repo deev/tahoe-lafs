@@ -698,27 +698,27 @@ class Filenode(unittest.TestCase, testutil.ShouldFailMixin):
         raise "unfinished"
 
     def test_modify(self):
-        def _modifier(old_contents, servermap):
+        def _modifier(old_contents):
             new_contents = old_contents + "line2"
             return new_contents
-        def _non_modifier(old_contents, servermap):
+        def _non_modifier(old_contents):
             return old_contents
-        def _none_modifier(old_contents, servermap):
+        def _none_modifier(old_contents):
             return None
-        def _error_modifier(old_contents, servermap):
+        def _error_modifier(old_contents):
             raise ValueError("oops")
-        def _toobig_modifier(old_contents, servermap):
+        def _toobig_modifier(old_contents):
             new_content = "b" * (self.OLD_MAX_SEGMENT_SIZE + 1)
             return new_content
         calls = []
-        def _ucw_error_modifier(old_contents, servermap):
+        def _ucw_error_modifier(old_contents):
             # simulate an UncoordinatedWriteError once
             calls.append(1)
             if len(calls) <= 1:
                 raise UncoordinatedWriteError("simulated")
             new_contents = old_contents + "line3"
             return new_contents
-        def _ucw_error_non_modifier(old_contents, servermap):
+        def _ucw_error_non_modifier(old_contents):
             # simulate an UncoordinatedWriteError once, and don't actually
             # modify the contents on subsequent invocations
             calls.append(1)
@@ -781,72 +781,6 @@ class Filenode(unittest.TestCase, testutil.ShouldFailMixin):
                                                            "line1line2line3"))
             d.addCallback(lambda res: self.failUnlessCurrentSeqnumIs(n, 4, "ucw"))
             d.addCallback(lambda res: n.modify(_toobig_modifier))
-            return d
-        d.addCallback(_created)
-        return d
-
-
-    def test_modify_backoffer(self):
-        def _modifier(old_contents, servermap):
-            return old_contents + "line2"
-        calls = []
-        def _ucw_error_modifier(old_contents, servermap):
-            # simulate an UncoordinatedWriteError once
-            calls.append(1)
-            if len(calls) <= 1:
-                raise UncoordinatedWriteError("simulated")
-            return old_contents + "line3"
-        def _always_ucw_error_modifier(old_contents, servermap):
-            raise UncoordinatedWriteError("simulated")
-        def _backoff_stopper(node, f):
-            return f
-        def _backoff_pauser(node, f):
-            d = defer.Deferred()
-            reactor.callLater(0.5, d.callback, None)
-            return d
-
-        # the give-up-er will hit its maximum retry count quickly
-        giveuper = BackoffAgent()
-        giveuper._delay = 0.1
-        giveuper.factor = 1
-
-        d = self.nodemaker.create_mutable_file(MutableData("line1"))
-        def _created(n):
-            d = n.modify(_modifier)
-            d.addCallback(lambda res: n.download_best_version())
-            d.addCallback(lambda res: self.failUnlessEqual(res, "line1line2"))
-            d.addCallback(lambda res: self.failUnlessCurrentSeqnumIs(n, 2, "m"))
-
-            d.addCallback(lambda res:
-                          self.shouldFail(UncoordinatedWriteError,
-                                          "_backoff_stopper", None,
-                                          n.modify, _ucw_error_modifier,
-                                          _backoff_stopper))
-            d.addCallback(lambda res: n.download_best_version())
-            d.addCallback(lambda res: self.failUnlessEqual(res, "line1line2"))
-            d.addCallback(lambda res: self.failUnlessCurrentSeqnumIs(n, 2, "stop"))
-
-            def _reset_ucw_error_modifier(res):
-                calls[:] = []
-                return res
-            d.addCallback(_reset_ucw_error_modifier)
-            d.addCallback(lambda res: n.modify(_ucw_error_modifier,
-                                               _backoff_pauser))
-            d.addCallback(lambda res: n.download_best_version())
-            d.addCallback(lambda res: self.failUnlessEqual(res,
-                                                           "line1line2line3"))
-            d.addCallback(lambda res: self.failUnlessCurrentSeqnumIs(n, 3, "pause"))
-
-            d.addCallback(lambda res:
-                          self.shouldFail(UncoordinatedWriteError,
-                                          "giveuper", None,
-                                          n.modify, _always_ucw_error_modifier,
-                                          giveuper.delay))
-            d.addCallback(lambda res: n.download_best_version())
-            d.addCallback(lambda res: self.failUnlessEqual(res,
-                                                           "line1line2line3"))
-            d.addCallback(lambda res: self.failUnlessCurrentSeqnumIs(n, 3, "giveup"))
-
             return d
         d.addCallback(_created)
         return d
@@ -2387,7 +2321,7 @@ class MultipleVersions(unittest.TestCase, PublishMixin, CheckerMixin):
         target[0] = 3 # seqnum4
         self._set_versions(target)
 
-        def _modify(oldversion, servermap):
+        def _modify(oldversion):
             return oldversion + " modified"
         d = self._fn.modify(_modify)
         d.addCallback(lambda res: self._fn.download_best_version())
@@ -3275,7 +3209,7 @@ class Version(GridTestMixin, unittest.TestCase, testutil.ShouldFailMixin, \
 
     def test_toplevel_modify(self):
         d = self.do_upload()
-        def modifier(old_contents, servermap):
+        def modifier(old_contents):
             return old_contents + "modified"
         d.addCallback(lambda ign: self.mdmf_node.modify(modifier))
         d.addCallback(lambda ignored:
@@ -3296,7 +3230,7 @@ class Version(GridTestMixin, unittest.TestCase, testutil.ShouldFailMixin, \
         # to modify a version other than the best usable version, then
         # test to see that the best recoverable version is that.
         d = self.do_upload()
-        def modifier(old_contents, servermap):
+        def modifier(old_contents):
             return old_contents + "modified"
         d.addCallback(lambda ign: self.mdmf_node.modify(modifier))
         d.addCallback(lambda ignored:
@@ -3786,7 +3720,7 @@ class DifferentEncoding(unittest.TestCase):
             n2 = self.nodemaker.create_from_cap(filecap)
             return n2
         d.addCallback(_created)
-        def modifier(old_contents, servermap):
+        def modifier(old_contents):
             return "new contents"
         d.addCallback(lambda n: n.modify(modifier))
         return d

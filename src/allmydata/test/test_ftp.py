@@ -37,7 +37,7 @@ class Handler(GridTestMixin, ReallyEqualMixin, unittest.TestCase):
     def _set_metadata(self, name, metadata):
         """Set metadata for `name', avoiding MetadataSetter's timestamp reset
         behavior."""
-        def _modifier(old_contents, servermap):
+        def _modifier(old_contents):
             children = self.root._unpack_contents(old_contents)
             children[name] = (children[name][0], metadata)
             return self.root._pack_contents(children)
