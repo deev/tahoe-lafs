@@ -1536,7 +1536,7 @@ class FakeMutableFile:
         pass
 
     def modify(self, modifier):
-        data = modifier(self.data, None)
+        data = modifier(self.data)
         self.data = data
         return defer.succeed(None)
 
