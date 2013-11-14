@@ -84,7 +84,7 @@ class Deleter:
         self.must_be_directory = must_be_directory
         self.must_be_file = must_be_file
 
-    def modify(self, old_contents, servermap):
+    def modify(self, old_contents):
         children = self.node._unpack_contents(old_contents)
         if self.name not in children:
             if self.must_exist:
@@ -111,7 +111,7 @@ class MetadataSetter:
         self.metadata = metadata
         self.create_readonly_node = create_readonly_node
 
-    def modify(self, old_contents, servermap):
+    def modify(self, old_contents):
         children = self.node._unpack_contents(old_contents)
         name = self.name
         if name not in children:
@@ -145,7 +145,7 @@ class Adder:
         precondition(IFilesystemNode.providedBy(node), node)
         self.entries[namex] = (node, metadata)
 
-    def modify(self, old_contents, servermap):
+    def modify(self, old_contents):
         children = self.node._unpack_contents(old_contents)
         now = time.time()
         for (namex, (child, new_metadata)) in self.entries.iteritems():
