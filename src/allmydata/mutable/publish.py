@@ -1,4 +1,4 @@
-
+﻿# -*- coding: utf-8-with-signature -*-
 
 import os, time
 from StringIO import StringIO
@@ -983,10 +983,11 @@ class Publish:
     def _got_write_answer(self, answer, writer, started):
         if not answer:
             # SDMF writers only pretend to write when readers set their
-            # blocks, salts, and so on -- they actually just write once,
-            # at the end of the upload process. In fake writes, they
-            # return defer.succeed(None). If we see that, we shouldn't
-            # bother checking it.
+            # blocks, salts, and so on -- they actually just write once, at
+            # the end of the upload process. In fake writes, they return
+            # defer.succeed(None). If we see that, we shouldn't bother
+            # checking it.  Also, answer could be None due to it being the
+            # return value from _connection_problem().
             return
 
         server = writer.server
@@ -1001,6 +1002,7 @@ class Publish:
         wrote, read_data = answer
 
         surprise_shares = set(read_data.keys()) - set([writer.shnum])
+        # XXX in this case -- https://tahoe-lafs.org/pipermail/tahoe-dev/2012-April/007285.html -- it was the same shnum that we were attempting to write, but our testv said read 1 byte from offset 0 and get '', and that testv failed. So, does that mean the testv was intended to succeed against the non-existent share, and we should be surprised that any share was present under this shnum at all‽ In that case, surprise_shares should not subtract out set([writer.shnum]).
 
         # We need to remove from surprise_shares any shares that we are
         # knowingly also writing to that server from other writers.

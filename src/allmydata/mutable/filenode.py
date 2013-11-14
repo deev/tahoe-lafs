@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8-with-signature -*-
 
 import random
 
@@ -339,7 +340,7 @@ class MutableFileNode:
         """
         d = self._get_version_from_servermap(MODE_READ, servermap, version)
         def _build_version((servermap, their_version)):
-            assert their_version in servermap.recoverable_versions()
+            assert their_version in servermap.recoverable_versions(), (their_version, servermap.recoverable_versions(),)
             assert their_version in servermap.make_versionmap()
 
             mfv = MutableFileVersion(self,
@@ -371,7 +372,7 @@ class MutableFileNode:
 
         If version and servermap are provided to me, I will validate
         that version exists in the servermap, and that the servermap was
-        updated correctly.
+        updated with the correct mode.
 
         If version is not provided, but servermap is, I will validate
         the servermap and return the best recoverable version that I can
@@ -559,7 +560,7 @@ class MutableFileNode:
         return self._do_serialized(self._upload, new_contents, servermap)
 
 
-    def modify(self, modifier, backoffer=None):
+    def modify(self, modifier):
         """
         I modify the contents of the best recoverable version of this
         mutable file with the modifier. This is equivalent to calling
@@ -568,15 +569,15 @@ class MutableFileNode:
         describing this process.
         """
         # TODO: Update downloader hints.
-        return self._do_serialized(self._modify, modifier, backoffer)
+        return self._do_serialized(self._modify, modifier)
 
 
-    def _modify(self, modifier, backoffer):
+    def _modify(self, modifier):
         """
         I am the serialized sibling of modify.
         """
         d = self.get_best_mutable_version()
-        d.addCallback(lambda mfv: mfv.modify(modifier, backoffer))
+        d.addCallback(lambda mfv: mfv.modify(modifier))
         return d
 
 
@@ -649,6 +650,10 @@ class MutableFileNode:
 
 
     def _do_serialized(self, cb, *args, **kwargs):
+        """
+        I wait until any outstanding operations on myself are finished and
+        then do cb on myself.
+        """
         # note: to avoid deadlock, this callable is *not* allowed to invoke
         # other serialized methods within this (or any other)
         # MutableFileNode. The callable should be a bound method of this same
@@ -784,91 +789,37 @@ class MutableFileVersion:
         return self._upload(new_contents)
 
 
-    def modify(self, modifier, backoffer=None):
+    def modify(self, modifier):
         """I use a modifier callback to apply a change to the mutable file.
         I implement the following pseudocode::
 
          obtain_mutable_filenode_lock()
-         first_time = True
-         while True:
-           update_servermap(MODE_WRITE)
-           old = retrieve_best_version()
-           new = modifier(old, servermap, first_time)
-           first_time = False
-           if new == old: break
-           try:
-             publish(new)
-           except UncoordinatedWriteError, e:
-             backoffer(e)
-             continue
-           break
+         update_servermap(MODE_WRITE)
+         old = retrieve_best_version()
+         new = modifier(old)
+         if new == old: break
+         publish(new)
          release_mutable_filenode_lock()
 
         The idea is that your modifier function can apply a delta of some
-        sort, and it will be re-run as necessary until it succeeds. The
-        modifier must inspect the old version to see whether its delta has
-        already been applied: if so it should return the contents unmodified.
+        sort, and if the result has no change then it doesn't publish the
+        result.
 
         Note that the modifier is required to run synchronously, and must not
         invoke any methods on this MutableFileNode instance.
-
-        The backoff-er is a callable that is responsible for inserting a
-        random delay between subsequent attempts, to help competing updates
-        from colliding forever. It is also allowed to give up after a while.
-        The backoffer is given two arguments: this MutableFileNode, and the
-        Failure object that contains the UncoordinatedWriteError. It should
-        return a Deferred that will fire when the next attempt should be
-        made, or return the Failure if the loop should give up. If
-        backoffer=None, a default one is provided which will perform
-        exponential backoff, and give up after 4 tries. Note that the
-        backoffer should not invoke any methods on this MutableFileNode
-        instance, and it needs to be highly conscious of deadlock issues.
         """
         assert not self.is_readonly()
 
-        return self._do_serialized(self._modify, modifier, backoffer)
+        return self._do_serialized(self._modify, modifier)
 
 
-    def _modify(self, modifier, backoffer):
-        if backoffer is None:
-            backoffer = BackoffAgent().delay
-        return self._modify_and_retry(modifier, backoffer, True)
-
-
-    def _modify_and_retry(self, modifier, backoffer, first_time):
-        """
-        I try to apply modifier to the contents of this version of the
-        mutable file. If I succeed, I return an UploadResults instance
-        describing my success. If I fail, I try again after waiting for
-        a little bit.
-        """
+    def _modify(self, modifier):
         log.msg("doing modify")
-        if first_time:
-            d = self._update_servermap()
-        else:
-            # We ran into trouble; do MODE_CHECK so we're a little more
-            # careful on subsequent tries.
-            d = self._update_servermap(mode=MODE_CHECK)
-
-        d.addCallback(lambda ignored:
-            self._modify_once(modifier, first_time))
-        def _retry(f):
-            f.trap(UncoordinatedWriteError)
-            # Uh oh, it broke. We're allowed to trust the servermap for our
-            # first try, but after that we need to update it. It's
-            # possible that we've failed due to a race with another
-            # uploader, and if the race is to converge correctly, we
-            # need to know about that upload.
-            d2 = defer.maybeDeferred(backoffer, self, f)
-            d2.addCallback(lambda ignored:
-                           self._modify_and_retry(modifier,
-                                                  backoffer, False))
-            return d2
-        d.addErrback(_retry)
+        d = self._update_servermap() # ??? XXX
+        d.addCallback(lambda ignored: self._modify_once(modifier))
         return d
 
-
-    def _modify_once(self, modifier, first_time):
+    def _modify_once(self, modifier):
         """
         I attempt to apply a modifier to the contents of the mutable
         file.
@@ -879,27 +830,19 @@ class MutableFileVersion:
         # avoid deadlock.
         d = self._try_to_download_data()
         def _apply(old_contents):
-            new_contents = modifier(old_contents, self._servermap, first_time)
+            new_contents = modifier(old_contents)
             precondition((isinstance(new_contents, str) or
                           new_contents is None),
                          "Modifier function must return a string "
                          "or None")
 
-            if new_contents is None or new_contents == old_contents:
+            if new_contents is not None and (new_contents != old_contents):
+                new_contents = MutableData(new_contents)
+                return self._upload(new_contents)
+            else:
                 log.msg("no changes")
                 # no changes need to be made
-                if first_time:
-                    return
-                # However, since Publish is not automatically doing a
-                # recovery when it observes UCWE, we need to do a second
-                # publish. See #551 for details. We'll basically loop until
-                # we managed an uncontested publish.
-                old_uploadable = MutableData(old_contents)
-                new_contents = old_uploadable
-            else:
-                new_contents = MutableData(new_contents)
 
-            return self._upload(new_contents)
         d.addCallback(_apply)
         return d
 

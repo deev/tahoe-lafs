@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8-with-signature -*-
 
 import time, math, unicodedata
 
@@ -83,10 +84,10 @@ class Deleter:
         self.must_be_directory = must_be_directory
         self.must_be_file = must_be_file
 
-    def modify(self, old_contents, servermap, first_time):
+    def modify(self, old_contents, servermap):
         children = self.node._unpack_contents(old_contents)
         if self.name not in children:
-            if first_time and self.must_exist:
+            if self.must_exist:
                 raise NoSuchChildError(self.name)
             self.old_child = None
             return None
@@ -110,7 +111,7 @@ class MetadataSetter:
         self.metadata = metadata
         self.create_readonly_node = create_readonly_node
 
-    def modify(self, old_contents, servermap, first_time):
+    def modify(self, old_contents, servermap):
         children = self.node._unpack_contents(old_contents)
         name = self.name
         if name not in children:
@@ -144,7 +145,7 @@ class Adder:
         precondition(IFilesystemNode.providedBy(node), node)
         self.entries[namex] = (node, metadata)
 
-    def modify(self, old_contents, servermap, first_time):
+    def modify(self, old_contents, servermap):
         children = self.node._unpack_contents(old_contents)
         now = time.time()
         for (namex, (child, new_metadata)) in self.entries.iteritems():
@@ -257,11 +258,11 @@ class DirectoryNode:
     implements(IDirectoryNode, ICheckable, IDeepCheckable)
     filenode_class = MutableFileNode
 
-    def __init__(self, filenode, nodemaker, uploader):
-        assert IFileNode.providedBy(filenode), filenode
-        assert not IDirectoryNode.providedBy(filenode), filenode
-        self._node = filenode
-        filenode_cap = filenode.get_cap()
+    def __init__(self, filenodeobj, nodemaker, uploader):
+        assert IFileNode.providedBy(filenodeobj), filenodeobj
+        assert not IDirectoryNode.providedBy(filenodeobj), filenodeobj
+        self._node = filenodeobj
+        filenode_cap = filenodeobj.get_cap()
         self._uri = wrap_dirnode_cap(filenode_cap)
         self._nodemaker = nodemaker
         self._uploader = uploader

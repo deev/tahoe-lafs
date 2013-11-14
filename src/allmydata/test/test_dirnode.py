@@ -1,3 +1,5 @@
+﻿# -*- coding: utf-8-with-signature -*-
+
 import time
 import unicodedata
 from zope.interface import implements
@@ -405,15 +407,8 @@ class Dirnode(GridTestMixin, unittest.TestCase,
             def _start(res):
                 self._start_timestamp = time.time()
             d.addCallback(_start)
-            # simplejson-1.7.1 (as shipped on Ubuntu 'gutsy') rounds all
-            # floats to hundredeths (it uses str(num) instead of repr(num)).
-            # simplejson-1.7.3 does not have this bug. To prevent this bug
-            # from causing the test to fail, stall for more than a few
-            # hundrededths of a second.
-            d.addCallback(self.stall, 0.1)
             d.addCallback(lambda res: n.add_file(u"timestamps",
                                                  upload.Data("stamp me", convergence="some convergence string")))
-            d.addCallback(self.stall, 0.1)
             def _stop(res):
                 self._stop_timestamp = time.time()
             d.addCallback(_stop)
@@ -438,7 +433,7 @@ class Dirnode(GridTestMixin, unittest.TestCase,
                 self._old_linkcrtime = tahoe_md["linkcrtime"]
                 self._old_linkmotime = tahoe_md["linkmotime"]
             d.addCallback(_check_timestamp1)
-            d.addCallback(self.stall, 2.0) # accomodate low-res timestamps
+            d.addCallback(self.stall, 2.0) # accomodate low-res timestamps # XXX
             d.addCallback(lambda res: n.set_node(u"timestamps", n))
             d.addCallback(lambda res: n.get_metadata_for(u"timestamps"))
             def _check_timestamp2(metadata):
@@ -1541,7 +1536,7 @@ class FakeMutableFile:
         pass
 
     def modify(self, modifier):
-        data = modifier(self.data, None, True)
+        data = modifier(self.data, None)
         self.data = data
         return defer.succeed(None)
 
