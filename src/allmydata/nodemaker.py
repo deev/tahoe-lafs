@@ -1,3 +1,5 @@
+﻿# -*- coding: utf-8-with-signature -*-
+
 import weakref
 from zope.interface import implements
 from allmydata.util.assertutil import precondition

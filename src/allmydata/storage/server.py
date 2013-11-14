@@ -1,3 +1,5 @@
+﻿# -*- coding: utf-8-with-signature -*-
+
 import os, re, weakref, struct, time
 
 from foolscap.api import Referenceable

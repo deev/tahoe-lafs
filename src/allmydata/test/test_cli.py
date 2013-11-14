@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8-with-signature -*-
 
 import os.path
 from twisted.trial import unittest

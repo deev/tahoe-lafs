@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8-with-signature -*-
 
 import time
 from itertools import count

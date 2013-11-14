@@ -1,3 +1,4 @@
+﻿# -*- coding: utf-8-with-signature -*-
 import os, time, weakref, itertools
 from zope.interface import implements
 from twisted.python import failure

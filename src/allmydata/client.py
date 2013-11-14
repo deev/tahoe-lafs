@@ -1,3 +1,5 @@
+﻿# -*- coding: utf-8-with-signature -*-
+
 import os, stat, time, weakref
 from allmydata import node
 
