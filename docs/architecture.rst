@@ -1,4 +1,4 @@
-﻿.. -*- coding: utf-8-with-signature -*-
+﻿.. -*- coding: utf-8-with-signature-unix; fill-column: 77 -*-
 
 =======================
 Tahoe-LAFS Architecture
@@ -169,46 +169,48 @@ Server Selection
 When a file is uploaded, the encoded shares are sent to some servers. But to
 which ones? The "server selection" algorithm is used to make this choice.
 
-The storage index is used to consistently-permute the set of all servers nodes
-(by sorting them by ``HASH(storage_index+nodeid)``). Each file gets a different
-permutation, which (on average) will evenly distribute shares among the grid
-and avoid hotspots. Each server has announced its available space when it
-connected to the introducer, and we use that available space information to
-remove any servers that cannot hold an encoded share for our file. Then we ask
-some of the servers thus removed if they are already holding any encoded shares
-for our file; we use this information later. (We ask any servers which are in
-the first 2*``N`` elements of the permuted list.)
+The storage index is used to consistently-permute the set of all servers
+nodes (by sorting them by ``HASH(storage_index+nodeid)``). Each file gets a
+different permutation, which (on average) will evenly distribute shares among
+the grid and avoid hotspots. Each server has announced its available space
+when it connected to the introducer, and we use that available space
+information to remove any servers that cannot hold an encoded share for our
+file. Then we ask some of the servers thus removed if they are already
+holding any encoded shares for our file; we use this information later. (We
+ask any servers which are in the first 2*``N`` elements of the permuted
+list.)
 
 We then use the permuted list of servers to ask each server, in turn, if it
 will hold a share for us (a share that was not reported as being already
 present when we talked to the full servers earlier, and that we have not
-already planned to upload to a different server). We plan to send a share to a
-server by sending an 'allocate_buckets() query' to the server with the number
-of that share. Some will say yes they can hold that share, others (those who
-have become full since they announced their available space) will say no; when
-a server refuses our request, we take that share to the next server on the
-list. In the response to allocate_buckets() the server will also inform us of
-any shares of that file that it already has. We keep going until we run out of
-shares that need to be stored. At the end of the process, we'll have a table
-that maps each share number to a server, and then we can begin the encode and
-push phase, using the table to decide where each share should be sent.
+already planned to upload to a different server). We plan to send a share to
+a server by sending an 'allocate_buckets() query' to the server with the
+number of that share. Some will say yes they can hold that share, others
+(those who have become full since they announced their available space) will
+say no; when a server refuses our request, we take that share to the next
+server on the list. In the response to allocate_buckets() the server will
+also inform us of any shares of that file that it already has. We keep going
+until we run out of shares that need to be stored. At the end of the process,
+we'll have a table that maps each share number to a server, and then we can
+begin the encode and push phase, using the table to decide where each share
+should be sent.
 
 Most of the time, this will result in one share per server, which gives us
 maximum reliability.  If there are fewer writable servers than there are
 unstored shares, we'll be forced to loop around, eventually giving multiple
 shares to a single server.
 
-If we have to loop through the node list a second time, we accelerate the query
-process, by asking each node to hold multiple shares on the second pass. In
-most cases, this means we'll never send more than two queries to any given
-node.
+If we have to loop through the node list a second time, we accelerate the
+query process, by asking each node to hold multiple shares on the second
+pass. In most cases, this means we'll never send more than two queries to any
+given node.
 
 If a server is unreachable, or has an error, or refuses to accept any of our
 shares, we remove it from the permuted list, so we won't query it again for
-this file. If a server already has shares for the file we're uploading, we add
-that information to the share-to-server table. This lets us do less work for
-files which have been uploaded once before, while making sure we still wind up
-with as many shares as we desire.
+this file. If a server already has shares for the file we're uploading, we
+add that information to the share-to-server table. This lets us do less work
+for files which have been uploaded once before, while making sure we still
+wind up with as many shares as we desire.
 
 Before a file upload is called successful, it has to pass an upload health
 check. For immutable files, we check to see that a condition called
@@ -219,39 +221,41 @@ affected if a few of those servers later fail. For mutable files and
 directories, we check to see that all of the encoded shares generated during
 the upload process were successfully placed on the grid. This is a weaker
 check than 'servers-of-happiness'; it does not consider any information about
-how the encoded shares are placed on the grid, and cannot detect situations in
-which all or a majority of the encoded shares generated during the upload
+how the encoded shares are placed on the grid, and cannot detect situations
+in which all or a majority of the encoded shares generated during the upload
 process reside on only one storage server. We hope to extend
-'servers-of-happiness' to mutable files in a future release of Tahoe-LAFS. If,
-at the end of the upload process, the appropriate upload health check fails,
-the upload is considered a failure.
+'servers-of-happiness' to mutable files in a future release of
+Tahoe-LAFS. If, at the end of the upload process, the appropriate upload
+health check fails, the upload is considered a failure.
 
-The current defaults use ``k`` = 3, ``servers_of_happiness`` = 7, and ``N`` = 10.
-``N`` = 10 means that we'll try to place 10 shares. ``k`` = 3 means that we need
-any three shares to recover the file. ``servers_of_happiness`` = 7 means that
-we'll consider an immutable file upload to be successful if we can place shares
-on enough servers that there are 7 different servers, the correct functioning
-of any ``k`` of which guarantee the availability of the immutable file.
+The current defaults use ``k`` = 3, ``servers_of_happiness`` = 7, and ``N``
+= 10.  ``N`` = 10 means that we'll try to place 10 shares. ``k`` = 3 means
+that we need any three shares to recover the file. ``servers_of_happiness`` =
+7 means that we'll consider an immutable file upload to be successful if we
+can place shares on enough servers that there are 7 different servers, the
+correct functioning of any ``k`` of which guarantee the availability of the
+immutable file.
 
-``N`` = 10 and ``k`` = 3 means there is a 3.3x expansion factor. On a small grid, you
-should set ``N`` about equal to the number of storage servers in your grid; on a
-large grid, you might set it to something smaller to avoid the overhead of
-contacting every server to place a file. In either case, you should then set ``k``
-such that ``N``/``k`` reflects your desired availability goals. The best value for
-``servers_of_happiness`` will depend on how you use Tahoe-LAFS. In a friendnet
-with a variable number of servers, it might make sense to set it to the smallest
-number of servers that you expect to have online and accepting shares at any
-given time. In a stable environment without much server churn, it may make
-sense to set ``servers_of_happiness`` = ``N``.
+``N`` = 10 and ``k`` = 3 means there is a 3.3x expansion factor. On a small
+grid, you should set ``N`` about equal to the number of storage servers in
+your grid; on a large grid, you might set it to something smaller to avoid
+the overhead of contacting every server to place a file. In either case, you
+should then set ``k`` such that ``N``/``k`` reflects your desired
+availability goals. The best value for ``servers_of_happiness`` will depend
+on how you use Tahoe-LAFS. In a friendnet with a variable number of servers,
+it might make sense to set it to the smallest number of servers that you
+expect to have online and accepting shares at any given time. In a stable
+environment without much server churn, it may make sense to set
+``servers_of_happiness`` = ``N``.
 
 When downloading a file, the current version just asks all known servers for
 any shares they might have. Once it has received enough responses that it
 knows where to find the needed k shares, it downloads at least the first
 segment from those servers. This means that it tends to download shares from
-the fastest servers. If some servers had more than one share, it will continue
-sending "Do You Have Block" requests to other servers, so that it can download
-subsequent segments from distinct servers (sorted by their DYHB round-trip
-times), if possible.
+the fastest servers. If some servers had more than one share, it will
+continue sending "Do You Have Block" requests to other servers, so that it
+can download subsequent segments from distinct servers (sorted by their DYHB
+round-trip times), if possible.
 
   *future work*
 
@@ -269,22 +273,22 @@ times), if possible.
   significantly hurt reliability (sometimes the permutation resulted in most
   of the shares being dumped on a single node).
 
-  Another algorithm (known as "denver airport" [#naming]_) uses the permuted hash to
-  decide on an approximate target for each share, then sends lease requests
-  via Chord routing. The request includes the contact information of the
-  uploading node, and asks that the node which eventually accepts the lease
-  should contact the uploader directly. The shares are then transferred over
-  direct connections rather than through multiple Chord hops. Download uses
-  the same approach. This allows nodes to avoid maintaining a large number of
-  long-term connections, at the expense of complexity and latency.
+  Another algorithm (known as "denver airport" [#naming]_) uses the permuted
+  hash to decide on an approximate target for each share, then sends lease
+  requests via Chord routing. The request includes the contact information of
+  the uploading node, and asks that the node which eventually accepts the
+  lease should contact the uploader directly. The shares are then transferred
+  over direct connections rather than through multiple Chord hops. Download
+  uses the same approach. This allows nodes to avoid maintaining a large
+  number of long-term connections, at the expense of complexity and latency.
 
-.. [#naming]  all of these names are derived from the location where they were
+.. [#naming] all of these names are derived from the location where they were
         concocted, in this case in a car ride from Boulder to DEN. To be
-        precise, "Tahoe 1" was an unworkable scheme in which everyone who holds
-        shares for a given file would form a sort of cabal which kept track of
-        all the others, "Tahoe 2" is the first-100-nodes in the permuted hash
-        described in this document, and "Tahoe 3" (or perhaps "Potrero hill 1")
-        was the abandoned ring-with-many-hands approach.
+        precise, "Tahoe 1" was an unworkable scheme in which everyone who
+        holds shares for a given file would form a sort of cabal which kept
+        track of all the others, "Tahoe 2" is the first-100-nodes in the
+        permuted hash described in this document, and "Tahoe 3" (or perhaps
+        "Potrero hill 1") was the abandoned ring-with-many-hands approach.
 
 
 Swarming Download, Trickling Upload
@@ -427,11 +431,11 @@ to other nodes.
   require much less network and CPU but it could make it extremely unlikely
   that any sort of corruption -- even malicious corruption intended to evade
   detection -- would evade detection. This would be an instance of a
-  cryptographic notion called "Proof of Retrievability". Note that to implement
-  this requires no change to the server or to the cryptographic data structure
-  -- with the current data structure and the current protocol it is up to the
-  client which blocks they choose to download, so this would be solely a change
-  in client behavior.
+  cryptographic notion called "Proof of Retrievability". Note that to
+  implement this requires no change to the server or to the cryptographic
+  data structure -- with the current data structure and the current protocol
+  it is up to the client which blocks they choose to download, so this would
+  be solely a change in client behavior.
 
 
 Security
@@ -506,24 +510,25 @@ File encoding and peer-node selection parameters can be adjusted to achieve
 different goals. Each choice results in a number of properties; there are
 many tradeoffs.
 
-First, some terms: the erasure-coding algorithm is described as ``k``-out-of-``N``
-(for this release, the default values are ``k`` = 3 and ``N`` = 10). Each grid will
-have some number of nodes; this number will rise and fall over time as nodes
-join, drop out, come back, and leave forever. Files are of various sizes, some
-are popular, others are unpopular. Nodes have various capacities, variable
-upload/download bandwidths, and network latency. Most of the mathematical
-models that look at node failure assume some average (and independent)
-probability 'P' of a given node being available: this can be high (servers
-tend to be online and available >90% of the time) or low (laptops tend to be
-turned on for an hour then disappear for several days). Files are encoded in
-segments of a given maximum size, which affects memory usage.
+First, some terms: the erasure-coding algorithm is described as
+``k``-out-of-``N`` (for this release, the default values are ``k`` = 3 and
+``N`` = 10). Each grid will have some number of nodes; this number will rise
+and fall over time as nodes join, drop out, come back, and leave
+forever. Files are of various sizes, some are popular, others are
+unpopular. Nodes have various capacities, variable upload/download
+bandwidths, and network latency. Most of the mathematical models that look at
+node failure assume some average (and independent) probability 'P' of a given
+node being available: this can be high (servers tend to be online and
+available >90% of the time) or low (laptops tend to be turned on for an hour
+then disappear for several days). Files are encoded in segments of a given
+maximum size, which affects memory usage.
 
 The ratio of ``N``/``k`` is the "expansion factor". Higher expansion factors
-improve reliability very quickly (the binomial distribution curve is very sharp),
-but consumes much more grid capacity. When P=50%, the absolute value of ``k``
-affects the granularity of the binomial curve (1-out-of-2 is much worse than
-50-out-of-100), but high values asymptotically approach a constant (i.e.
-500-of-1000 is not much better than 50-of-100). When P is high and the
+improve reliability very quickly (the binomial distribution curve is very
+sharp), but consumes much more grid capacity. When P=50%, the absolute value
+of ``k`` affects the granularity of the binomial curve (1-out-of-2 is much
+worse than 50-out-of-100), but high values asymptotically approach a constant
+(i.e.  500-of-1000 is not much better than 50-of-100). When P is high and the
 expansion factor is held at a constant, higher values of ``k`` and ``N`` give
 much better reliability (for P=99%, 50-out-of-100 is much much better than
 5-of-10, roughly 10^50 times better), because there are more shares that can
@@ -534,24 +539,25 @@ granularity: having only one node means a single point of failure, no matter
 how many copies of the file you make. Independent nodes (with uncorrelated
 failures) are necessary to hit the mathematical ideals: if you have 100 nodes
 but they are all in the same office building, then a single power failure
-will take out all of them at once. Pseudospoofing, also called a "Sybil Attack",
-is where a single attacker convinces you that they are actually multiple
-servers, so that you think you are using a large number of independent nodes,
-but in fact you have a single point of failure (where the attacker turns off
-all their machines at once). Large grids, with lots of truly independent nodes,
-will enable the use of lower expansion factors to achieve the same reliability,
-but will increase overhead because each node needs to know something about
-every other, and the rate at which nodes come and go will be higher (requiring
-network maintenance traffic). Also, the File Repairer work will increase with
-larger grids, although then the job can be distributed out to more nodes.
+will take out all of them at once. Pseudospoofing, also called a "Sybil
+Attack", is where a single attacker convinces you that they are actually
+multiple servers, so that you think you are using a large number of
+independent nodes, but in fact you have a single point of failure (where the
+attacker turns off all their machines at once). Large grids, with lots of
+truly independent nodes, will enable the use of lower expansion factors to
+achieve the same reliability, but will increase overhead because each node
+needs to know something about every other, and the rate at which nodes come
+and go will be higher (requiring network maintenance traffic). Also, the File
+Repairer work will increase with larger grids, although then the job can be
+distributed out to more nodes.
 
-Higher values of ``N`` increase overhead: more shares means more Merkle hashes
-that must be included with the data, and more nodes to contact to retrieve
-the shares. Smaller segment sizes reduce memory usage (since each segment
-must be held in memory while erasure coding runs) and improves "alacrity"
-(since downloading can validate a smaller piece of data faster, delivering it
-to the target sooner), but also increase overhead (because more blocks means
-more Merkle hashes to validate them).
+Higher values of ``N`` increase overhead: more shares means more Merkle
+hashes that must be included with the data, and more nodes to contact to
+retrieve the shares. Smaller segment sizes reduce memory usage (since each
+segment must be held in memory while erasure coding runs) and improves
+"alacrity" (since downloading can validate a smaller piece of data faster,
+delivering it to the target sooner), but also increase overhead (because more
+blocks means more Merkle hashes to validate them).
 
 In general, small private grids should work well, but the participants will
 have to decide between storage overhead and reliability. Large stable grids
