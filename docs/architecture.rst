@@ -20,7 +20,7 @@ Tahoe-LAFS Architecture
 Overview
 ========
 
-(See the `docs/specifications directory`_ for more details.)
+(See the `docs/specifications directory <specifications>`_ for more details.)
 
 There are three layers: the key-value store, the filesystem, and the
 application.
@@ -45,10 +45,10 @@ Allmydata.com used it for a backup service: the application periodically
 copies files from the local disk onto the decentralized filesystem. We later
 provide read-only access to those files, allowing users to recover them.
 There are several other applications built on top of the Tahoe-LAFS
-filesystem (see the RelatedProjects_ page of the wiki for a list).
+filesystem (see the `RelatedProjects
+<https://tahoe-lafs.org/trac/tahoe-lafs/wiki/RelatedProjects>`_ page of the
+wiki for a list).
 
-.. _docs/specifications directory: specifications
-.. _RelatedProjects: https://tahoe-lafs.org/trac/tahoe-lafs/wiki/RelatedProjects
 
 The Key-Value Store
 ===================
@@ -177,40 +177,12 @@ when it connected to the introducer, and we use that available space
 information to remove any servers that cannot hold an encoded share for our
 file. Then we ask some of the servers thus removed if they are already
 holding any encoded shares for our file; we use this information later. (We
-ask any servers which are in the first 2*``N`` elements of the permuted
+ask any servers which are in the first 2* ``N`` elements of the permuted
 list.)
 
-We then use the permuted list of servers to ask each server, in turn, if it
-will hold a share for us (a share that was not reported as being already
-present when we talked to the full servers earlier, and that we have not
-already planned to upload to a different server). We plan to send a share to
-a server by sending an 'allocate_buckets() query' to the server with the
-number of that share. Some will say yes they can hold that share, others
-(those who have become full since they announced their available space) will
-say no; when a server refuses our request, we take that share to the next
-server on the list. In the response to allocate_buckets() the server will
-also inform us of any shares of that file that it already has. We keep going
-until we run out of shares that need to be stored. At the end of the process,
-we'll have a table that maps each share number to a server, and then we can
-begin the encode and push phase, using the table to decide where each share
-should be sent.
-
-Most of the time, this will result in one share per server, which gives us
-maximum reliability.  If there are fewer writable servers than there are
-unstored shares, we'll be forced to loop around, eventually giving multiple
-shares to a single server.
-
-If we have to loop through the node list a second time, we accelerate the
-query process, by asking each node to hold multiple shares on the second
-pass. In most cases, this means we'll never send more than two queries to any
-given node.
-
-If a server is unreachable, or has an error, or refuses to accept any of our
-shares, we remove it from the permuted list, so we won't query it again for
-this file. If a server already has shares for the file we're uploading, we
-add that information to the share-to-server table. This lets us do less work
-for files which have been uploaded once before, while making sure we still
-wind up with as many shares as we desire.
+Then, server selection is determined and shares are appropriately placed. For
+a detailed description of server selection, refer to
+`<servers-of-happiness.rst#upload-strategy-of-happiness>`_.
 
 Before a file upload is called successful, it has to pass an upload health
 check. For immutable files, we check to see that a condition called
@@ -228,13 +200,13 @@ process reside on only one storage server. We hope to extend
 Tahoe-LAFS. If, at the end of the upload process, the appropriate upload
 health check fails, the upload is considered a failure.
 
-The current defaults use ``k`` = 3, ``servers_of_happiness`` = 7, and ``N``
-= 10.  ``N`` = 10 means that we'll try to place 10 shares. ``k`` = 3 means
-that we need any three shares to recover the file. ``servers_of_happiness`` =
-7 means that we'll consider an immutable file upload to be successful if we
-can place shares on enough servers that there are 7 different servers, the
-correct functioning of any ``k`` of which guarantee the availability of the
-immutable file.
+The current defaults use ``k`` = 3, ``servers_of_happiness`` = 7, and
+``N`` = 10. ``N`` = 10 means that we'll try to place 10 shares. ``k`` = 3
+means that we need any 3 shares to recover the file. ``k`` = 3 and
+``servers_of_happiness`` = 7 means that we'll consider an immutable file
+upload to be successful if we can place shares on enough servers that there
+are 7 different servers, the correct functioning of any 3 of which guarantee
+the availability of the file.
 
 ``N`` = 10 and ``k`` = 3 means there is a 3.3x expansion factor. On a small
 grid, you should set ``N`` about equal to the number of storage servers in
@@ -320,9 +292,7 @@ commercially-run grid for which all of the storage servers are in a colo
 facility with high interconnect bandwidth. In this case, the helper is placed
 in the same facility, so the helper-to-storage-server bandwidth is huge.
 
-See helper.rst_ for details about the upload helper.
-
-.. _helper.rst: helper.rst
+See `<helper.rst>`_ for details about the upload helper.
 
 
 The Filesystem Layer
@@ -374,10 +344,8 @@ clients are responsible for renewing their leases on a periodic basis at
 least frequently enough to prevent any of the leases from expiring before the
 next renewal pass.
 
-See garbage-collection.rst_ for further information, and for how to configure
-garbage collection.
-
-.. _garbage-collection.rst: garbage-collection.rst
+See `<garbage-collection.rst>`_ for further information, and for how to
+configure garbage collection.
 
 
 File Repairer
