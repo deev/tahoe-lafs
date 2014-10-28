@@ -43,34 +43,38 @@ then the Happiness value is 2.:
 
    Happiness value = 2
 
-In this case, adding server C holding share 0 would not increase the
-Happiness value.::
+Adding server C holding a copy of share 1 would not increase the Happiness
+value.:
 
-    example 2
-    ---------
+    *example 2*
 
+.. figure:: example-2.svg
+   :name: example 2
+   :alt:
     server A → share 0
     server B → share 1
     server C → share 1
 
-    Happiness value = 2
+   Happiness value = 2
 
 You can understand this intuitively as being that server C doesn't increase
-the robustness of the file as well as it could. Server C will help if server
-B is destroyed by the demon, but server C will not be any added help beyond
-what server B provided, if server A is destroyed.
+the robustness of the file as well as it could. Server C will help if the
+demon destroys server B, but server C will not be any added help beyond what
+server B provided, if the demon destroys server A.
 
 But if the added server C held a new share, then it would increase the
-Happiness value.::
+Happiness value.:
 
-    example 3
-    ---------
+    *example 3*
 
+.. figure:: example-3.svg
+   :name: example 3
+   :alt:
     server A → share 0
     server B → share 1
     server C → share 2
 
-    Happiness value = 3
+   Happiness value = 3
 
 Now if each server holds at most one share, then this measure of robustness
 is very intuitive — it is basically just “the number of servers that each
@@ -79,15 +83,40 @@ have a unique share”.
 However, if some servers have more than one share on them, then the
 “Happiness” measure may not be as intuitive.
 
-For another example, if you have this distribution::
+For another example, if you have this distribution:
 
-    example 4
-    ---------
+    *example 4*
 
+.. figure:: example-4.svg
+   :name: example 4
+   :alt:
     server A → share 0, share 1
     server B → share 1, share 2
 
-    Happiness value = 2
+   Happiness value = ?
+
+To figure out what the happiness value is, consider the various ways that we
+can match unique servers to unique shares. This is called a “matching” in
+graph theory terms. Here are the possible matchings:
+
+    *example 4 with matchings*
+
+.. figure:: example-4-matchings.svg
+   :name: example 4 with matchings
+   :alt:
+    server A → share 0, (share 1)
+    server B → share 1, (share 2)
+    or
+    server A → share 0, (share 1)
+    server B → (share 1), share 2
+    or
+    server A → (share 0), share 1
+    server B → (share 1), share 2
+
+   Happiness value = 2
+
+The three possible matchings all have 2 server-to-share pairs, so the
+happiness value is 2.
 
 And you add a server C which holds share 1 and share 2, then you increase the
 Happiness level to 3.::

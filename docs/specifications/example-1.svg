@@ -9,48 +9,55 @@
    xmlns="http://www.w3.org/2000/svg"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
-   width="176.64294"
-   height="120.73915"
+   width="194.82109"
+   height="129.36917"
    id="svg5027"
    version="1.1"
-   inkscape:version="0.48.4 r9939"
-   sodipodi:docname="example-1.svg">
+   inkscape:version="0.91pre2 r"
+   sodipodi:docname="example-1.svg"
+   inkscape:export-filename="/home/zooko/playground/tahoe/tahoe-lafs/docs/specifications/example-1.png"
+   inkscape:export-xdpi="90"
+   inkscape:export-ydpi="90">
   <defs
      id="defs5029">
     <marker
        inkscape:stockid="Arrow2Lend"
        orient="auto"
-       refY="0.0"
-       refX="0.0"
+       refY="0"
+       refX="0"
        id="Arrow2Lend"
-       style="overflow:visible;">
+       style="overflow:visible">
       <path
          id="path4141"
-         style="fill-rule:evenodd;stroke-width:0.62500000;stroke-linejoin:round;"
-         d="M 8.7185878,4.0337352 L -2.2072895,0.016013256 L 8.7185884,-4.0017078 C 6.9730900,-1.6296469 6.9831476,1.6157441 8.7185878,4.0337352 z "
-         transform="scale(1.1) rotate(180) translate(1,0)" />
+         style="fill-rule:evenodd;stroke-width:0.625;stroke-linejoin:round"
+         d="M 8.7185878,4.0337352 -2.2072895,0.01601326 8.7185884,-4.0017078 c -1.7454984,2.3720609 -1.7354408,5.6174519 -6e-7,8.035443 z"
+         transform="matrix(-1.1,0,0,-1.1,-1.1,0)"
+         inkscape:connector-curvature="0" />
     </marker>
     <marker
        style="overflow:visible"
        id="DistanceEnd"
-       refX="0.0"
-       refY="0.0"
+       refX="0"
+       refY="0"
        orient="auto"
        inkscape:stockid="DistanceEnd">
       <g
          id="g2301">
         <path
-           style="fill:none;stroke:#ffffff;stroke-width:1.15;stroke-linecap:square"
-           d="M 0,0 L -2,0"
-           id="path2316" />
+           style="fill:none;stroke:#ffffff;stroke-width:1.14999998;stroke-linecap:square"
+           d="M 0,0 -2,0"
+           id="path2316"
+           inkscape:connector-curvature="0" />
         <path
            style="fill:#000000;fill-rule:evenodd;stroke:none"
-           d="M 0,0 L -13,4 L -9,0 -13,-4 L 0,0 z "
-           id="path2312" />
+           d="M 0,0 -13,4 -9,0 -13,-4 0,0 z"
+           id="path2312"
+           inkscape:connector-curvature="0" />
         <path
            style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:square"
-           d="M 0,-4 L 0,40"
-           id="path2314" />
+           d="M 0,-4 0,40"
+           id="path2314"
+           inkscape:connector-curvature="0" />
       </g>
     </marker>
     <marker
@@ -160,8 +167,8 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="6.0285613"
-     inkscape:cx="79.475928"
-     inkscape:cy="60.371944"
+     inkscape:cx="86.530132"
+     inkscape:cy="69.001963"
      inkscape:document-units="px"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -187,7 +194,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -195,12 +202,12 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-91.990239,-382.75231)">
+     transform="translate(-84.936035,-382.75231)">
     <g
        id="g4593"
        transform="matrix(0.5,0,0,0.5,124.76385,381.56167)">
       <path
-         d="m 228.57143,233.07646 c 0,19.72446 -15.98983,35.71429 -35.71428,35.71429 -19.72446,0 -35.71429,-15.98983 -35.71429,-35.71429 0,-19.72445 15.98983,-35.71429 35.71429,-35.71429 19.72445,0 35.71428,15.98984 35.71428,35.71429 z"
+         d="m 228.57143,233.07646 a 35.714287,35.714287 0 0 1 -35.71428,35.71429 35.714287,35.714287 0 0 1 -35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71428,35.71429 z"
          sodipodi:ry="35.714287"
          sodipodi:rx="35.714287"
          sodipodi:cy="233.07646"
@@ -230,7 +237,7 @@
        id="g4602"
        transform="matrix(0.5,0,0,0.5,105.17124,381.76894)">
       <path
-         d="m 228.57143,233.07646 c 0,19.72446 -15.98983,35.71429 -35.71428,35.71429 -19.72446,0 -35.71429,-15.98983 -35.71429,-35.71429 0,-19.72445 15.98983,-35.71429 35.71429,-35.71429 19.72445,0 35.71428,15.98984 35.71428,35.71429 z"
+         d="m 228.57143,233.07646 a 35.714287,35.714287 0 0 1 -35.71428,35.71429 35.714287,35.714287 0 0 1 -35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71428,35.71429 z"
          sodipodi:ry="35.714287"
          sodipodi:rx="35.714287"
          sodipodi:cy="233.07646"
@@ -284,7 +291,7 @@
        transform="matrix(0.5,0,0,0.5,81.428809,381.56167)">
       <path
          transform="translate(-107.48023,-136.02828)"
-         d="m 228.57143,233.07646 c 0,19.72446 -15.98983,35.71429 -35.71428,35.71429 -19.72446,0 -35.71429,-15.98983 -35.71429,-35.71429 0,-19.72445 15.98983,-35.71429 35.71429,-35.71429 19.72445,0 35.71428,15.98984 35.71428,35.71429 z"
+         d="m 228.57143,233.07646 a 35.714287,35.714287 0 0 1 -35.71428,35.71429 35.714287,35.714287 0 0 1 -35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71428,35.71429 z"
          sodipodi:ry="35.714287"
          sodipodi:rx="35.714287"
          sodipodi:cy="233.07646"
@@ -308,7 +315,7 @@
        id="g4610"
        transform="matrix(0.5,0,0,0.5,82.539709,381.3544)">
       <path
-         d="m 228.57143,233.07646 c 0,19.72446 -15.98983,35.71429 -35.71428,35.71429 -19.72446,0 -35.71429,-15.98983 -35.71429,-35.71429 0,-19.72445 15.98983,-35.71429 35.71429,-35.71429 19.72445,0 35.71428,15.98984 35.71428,35.71429 z"
+         d="m 228.57143,233.07646 a 35.714287,35.714287 0 0 1 -35.71428,35.71429 35.714287,35.714287 0 0 1 -35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71429,-35.71429 35.714287,35.714287 0 0 1 35.71428,35.71429 z"
          sodipodi:ry="35.714287"
          sodipodi:rx="35.714287"
          sodipodi:cy="233.07646"
@@ -331,18 +338,32 @@
            style="font-size:40px;font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;text-align:start;line-height:125%;writing-mode:lr-tb;text-anchor:start;font-family:Ubuntu;-inkscape-font-specification:Ubuntu">B</tspan></text>
     </g>
     <path
-       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-end:url(#Arrow2Lend);display:inline"
+       style="display:inline;fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Lend)"
        d="m 141.58431,485.3153 79.96042,0.10565"
        id="path4114-4-5-7"
        inkscape:connector-type="polyline"
        inkscape:connector-curvature="3"
        sodipodi:nodetypes="cc" />
     <path
-       style="fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-opacity:1;stroke-dasharray:none;marker-end:url(#Arrow2Lend);display:inline"
+       style="display:inline;fill:none;stroke:#000000;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow2Lend)"
        d="m 142.08194,430.012 79.13103,0.10565"
        id="path4114-4-5-1"
        inkscape:connector-type="polyline"
        inkscape:connector-curvature="3"
        sodipodi:nodetypes="cc" />
+    <ellipse
+       style="fill:none;fill-opacity:1;stroke:#ff0000;stroke-width:1;stroke-linecap:butt;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="path3525"
+       cx="179.89967"
+       cy="430.90598"
+       rx="49.309246"
+       ry="18.209993" />
+    <ellipse
+       style="fill:none;fill-opacity:1;stroke:#ff0000;stroke-width:1;stroke-linecap:butt;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="path3525-3"
+       cx="180.74077"
+       cy="485.67316"
+       rx="49.309246"
+       ry="18.209993" />
   </g>
 </svg>
