@@ -119,19 +119,26 @@ The three possible matchings all have 2 server-to-share pairs, so the
 happiness value is 2.
 
 And you add a server C which holds share 1 and share 2, then you increase the
-Happiness level to 3.::
+Happiness level to 3.:
 
-    example 5
-    ---------
+    *example 5*
 
-    server A → share 0, share 1
-    server B → share 1, share 2
-    server C → share 1, share 2
+.. figure:: example-5.svg
+   :name: example 5
+   :alt:
+    server A → share 0, (share 1)
+    server B → share 1, (share 2)
+    server C → (share 1), share 2
+    or
+    server A → share 0, (share 1)
+    server B → (share 1), share 2
+    server C → share 1, (share 2)
 
-    Happiness value = 3
+   Happiness value = 3
+
+xxx
 
     example 6
-    ---------
 
     server A → share 0, share 1
     server B → share 1, share 2
@@ -140,14 +147,12 @@ Happiness level to 3.::
     Happiness value = 3
 
     example 7
-    ---------
 
     server A → share 0, share 1, share 2, share 3
 
     Happiness value = 1
 
     example 8
-    ---------
 
     server A → share 0, share 1, share 2, share 3
     server B → share 0
@@ -155,7 +160,6 @@ Happiness level to 3.::
     Happiness value = 2
 
     example 9
-    ---------
 
     server A → share 0, share 1, share 2, share 3
     server B → share 0, share 1, share 2, share 3
@@ -163,7 +167,6 @@ Happiness level to 3.::
     Happiness value = 2
 
     example 10
-    ----------
 
     server A → share 0, share 1, share 2, share 3
     server B → share 0, share 1, share 2, share 3
