@@ -241,3 +241,5 @@ def _cygwin_hack_find_addresses():
             addresses.append(addr)
 
     return defer.succeed(addresses)
+
+increase_rlimits()
