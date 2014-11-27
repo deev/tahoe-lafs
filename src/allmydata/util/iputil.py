@@ -76,6 +76,75 @@ try:
             # who knows what. It isn't very important, so log it and continue
             log.err()
             raise
+            
+    def increase_rlimits_v1_10():
+        # We'd like to raise our soft resource.RLIMIT_NOFILE, since certain
+        # systems (OS-X, probably solaris) start with a relatively low limit
+        # (256), and some unit tests want to open up more sockets than this.
+        # Most linux systems start with both hard and soft limits at 1024,
+        # which is plenty.
+
+        # unfortunately the values to pass to setrlimit() vary widely from
+        # one system to another. OS-X reports (256, HUGE), but the real hard
+        # limit is 10240, and accepts (-1,-1) to mean raise it to the
+        # maximum. Cygwin reports (256, -1), then ignores a request of
+        # (-1,-1): instead you have to guess at the hard limit (it appears to
+        # be 3200), so using (3200,-1) seems to work. Linux reports a
+        # sensible (1024,1024), then rejects (-1,-1) as trying to raise the
+        # maximum limit, so you could set it to (1024,1024) but you might as
+        # well leave it alone.
+
+        print (u"HELLO WORLD 011")
+        try:
+            current = resource.getrlimit(resource.RLIMIT_NOFILE)
+        except AttributeError:
+            # we're probably missing RLIMIT_NOFILE
+            return
+        print (u"012 getrlimit(RLIMIT_NOFILE) before setrlimit: %s" % (current,))
+
+        if current[0] >= 1024:
+            # good enough, leave it alone
+            return
+
+        try:
+            if current[1] > 0 and current[1] < 1000000:
+                print (u"013 about to setrlimit(RLIMIT_NOFILE, %s, %s)..." % (current[1], current[1],))
+                # solaris reports (256, 65536)
+                resource.setrlimit(resource.RLIMIT_NOFILE,
+                                   (current[1], current[1]))
+                try:
+                    aftersettingdiag = resource.getrlimit(resource.RLIMIT_NOFILE)
+                except AttributeError:
+                    # we're probably missing RLIMIT_NOFILE
+                    pass
+                else:
+                    print (u"014 getrlimit(RLIMIT_NOFILE) after setrlimit(%s, %s): %s" % (current[1], current[1], aftersettingdiag,))
+            else:
+                # this one works on OS-X (bsd), and gives us 10240, but
+                # it doesn't work on linux (on which both the hard and
+                # soft limits are set to 1024 by default).
+                print (u"015 about to setrlimit(RLIMIT_NOFILE, %s, %s)..." % (-1, -1,))
+                resource.setrlimit(resource.RLIMIT_NOFILE, (-1,-1))
+                new = resource.getrlimit(resource.RLIMIT_NOFILE)
+                print (u"016 getrlimit(RLIMIT_NOFILE) after setrlimit(-1, -1): %s" % (new,))
+                if new[0] == current[0]:
+                    # probably cygwin, which ignores -1. Use a real value.
+                    print (u"017 about to setrlimit(RLIMIT_NOFILE, %s, %s)..." % (3200, -1,))
+                    resource.setrlimit(resource.RLIMIT_NOFILE, (3200,-1))
+                    try:
+                        aftersettingdiag = resource.getrlimit(resource.RLIMIT_NOFILE)
+                    except AttributeError:
+                        # we're probably missing RLIMIT_NOFILE
+                        pass
+                    else:
+                        print (u"018 getrlimit(RLIMIT_NOFILE) after setrlimit(3200, -1): %s" % (aftersettingdiag,))
+        except ValueError, e:
+            print ("019 unable to set RLIMIT_NOFILE: current value %s, exception: %s" %
+                   (resource.getrlimit(resource.RLIMIT_NOFILE), e,))
+        except:
+            # who knows what. It isn't very important, so log it and continue
+            log.err()
+
 except ImportError:
     def _increase_rlimits():
         print (u"HELLO WORLD 100")
@@ -242,4 +311,8 @@ def _cygwin_hack_find_addresses():
 
     return defer.succeed(addresses)
 
-increase_rlimits()
+import sys
+if 'v110' in sys.argv:
+    increase_rlimits_v1_10()
+else:
+    increase_rlimits()
