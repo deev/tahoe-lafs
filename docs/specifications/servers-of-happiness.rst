@@ -77,8 +77,8 @@ Happiness value.:
    Happiness value = 3
 
 Now if each server holds at most one share, then this measure of robustness
-is very intuitive — it is basically just “the number of servers that each
-have a unique share”.
+is intuitive — it is basically just “the number of servers that each have a
+unique share”.
 
 However, if some servers have more than one share on them, then the
 “Happiness” measure may not be as intuitive.
@@ -99,7 +99,7 @@ To figure out what the happiness value is, consider the various ways that we
 can match unique servers to unique shares. This is called a “matching” in
 graph theory terms. Here are the possible matchings:
 
-    *example 4 with matchings*
+    *example 4 with all three of the possible maximum matchings*
 
 .. figure:: example-4-matchings.svg
    :name: example 4 with matchings
@@ -115,13 +115,13 @@ graph theory terms. Here are the possible matchings:
 
    Happiness value = 2
 
-The three possible matchings all have 2 server-to-share pairs, so the
-happiness value is 2.
+These three matchings all have 2 server-to-share pairs, so the happiness
+value is 2.
 
 And you add a server C which holds share 1 and share 2, then you increase the
 Happiness level to 3.:
 
-    *example 5*
+    *example 5 with both of the possible maximum matchings*
 
 .. figure:: example-5.svg
    :name: example 5
