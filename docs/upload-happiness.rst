@@ -64,8 +64,9 @@ Distributed Filesystems”`_.
 
 This upload algorithm is called “Servers Of Happiness”, and the way it
 works, basically, is that if one server has multiple shares of a file,
-then it counts only one of those shares, and if one share is present
-on multiple servers, then it counts only one of those servers.
+then the uploader counts only one of those shares, and if one share is
+present on multiple servers, then the uploader counts only one of
+those servers.
 
 The end result is that regardless of whatever weird distribution of
 shares was in place when the uploader started, it will proceed as long
