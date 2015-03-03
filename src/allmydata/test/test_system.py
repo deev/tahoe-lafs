@@ -1897,6 +1897,8 @@ class Connections(SystemTestMixin, unittest.TestCase):
         self.basedir = "system/Connections/rref"
         d = self.set_up_nodes(2)
         def _start(ign):
+            print "XXX 0 self.c0.storage_broker.get_connected_servers(): ", self.c0.storage_broker.get_connected_servers()
+            print "XXX 1 self.c0.nodeid: ", self.c0.nodeid
             self.c0 = self.clients[0]
             nonclients = [s for s in self.c0.storage_broker.get_connected_servers()
                           if s.get_serverid() != self.c0.nodeid]

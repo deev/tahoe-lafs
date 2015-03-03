@@ -79,8 +79,7 @@ class Node(service.MultiService):
 
         # creates self.config
         self.read_config()
-        nickname_utf8 = self.get_config("node", "nickname", "<unspecified>")
-        self.nickname = nickname_utf8.decode("utf-8")
+        self.nickname = self.get_config(u"node", u"nickname", u"<unspecified>")
         assert type(self.nickname) is unicode
 
         self.init_tempdir()
@@ -93,7 +92,7 @@ class Node(service.MultiService):
         iputil.increase_rlimits()
 
     def init_tempdir(self):
-        tempdir_config = self.get_config("node", "tempdir", "tmp").decode('utf-8')
+        tempdir_config = self.get_config(u"node", u"tempdir", u"tmp")
         tempdir = abspath_expanduser_unicode(tempdir_config, base=self.basedir)
         if not os.path.exists(tempdir):
             fileutil.make_dirs(tempdir)
@@ -117,6 +116,11 @@ class Node(service.MultiService):
         return False
 
     def get_config(self, section, option, default=_None, boolean=False):
+        precondition(isinstance(option, unicode), option)
+        if boolean is True:
+            precondition((default is None) or isinstance(default, bool), default)
+        else:
+            precondition(not isinstance(default, str), default)
         try:
             if boolean:
                 return self.config.getboolean(section, option)
@@ -125,7 +129,7 @@ class Node(service.MultiService):
             if option.endswith(".furl") and self._contains_unescaped_hash(item):
                 raise UnescapedHashError(section, option, item)
 
-            return item
+            return item.decode('utf-8')
         except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
             if default is _None:
                 fn = os.path.join(self.basedir, u"tahoe.cfg")
@@ -134,10 +138,12 @@ class Node(service.MultiService):
             return default
 
     def set_config(self, section, option, value):
+        precondition(isinstance(option, unicode), option)
+        precondition(isinstance(value, unicode), value)
         if not self.config.has_section(section):
             self.config.add_section(section)
-        self.config.set(section, option, value)
-        assert self.config.get(section, option) == value
+        self.config.set(section, option.encode('utf-8'), value.encode('utf-8'))
+        _assert(self.config.get(section, option) == value)
 
     def read_config(self):
         self.error_about_old_config_files()
@@ -158,14 +164,14 @@ class Node(service.MultiService):
             if os.path.exists(tahoe_cfg):
                 raise
 
-        cfg_tubport = self.get_config("node", "tub.port", "")
+        cfg_tubport = self.get_config(u"node", u"tub.port", u"")
         if not cfg_tubport:
             # For 'tub.port', tahoe.cfg overrides the individual file on
             # disk. So only read self._portnumfile if tahoe.cfg doesn't
             # provide a value.
             try:
-                file_tubport = fileutil.read(self._portnumfile).strip()
-                self.set_config("node", "tub.port", file_tubport)
+                file_tubport = fileutil.read(self._portnumfile).strip().decode('utf-8')
+                self.set_config(u"node", u"tub.port", file_tubport)
             except EnvironmentError:
                 if os.path.exists(self._portnumfile):
                     raise
@@ -197,10 +203,10 @@ class Node(service.MultiService):
         self.tub.setOption("expose-remote-exception-types", False)
 
         # see #521 for a discussion of how to pick these timeout values.
-        keepalive_timeout_s = self.get_config("node", "timeout.keepalive", "")
+        keepalive_timeout_s = self.get_config(u"node", u"timeout.keepalive", u"")
         if keepalive_timeout_s:
             self.tub.setOption("keepaliveTimeout", int(keepalive_timeout_s))
-        disconnect_timeout_s = self.get_config("node", "timeout.disconnect", "")
+        disconnect_timeout_s = self.get_config(u"node", u"timeout.disconnect", u"")
         if disconnect_timeout_s:
             # N.B.: this is in seconds, so use "1800" to get 30min
             self.tub.setOption("disconnectTimeout", int(disconnect_timeout_s))
@@ -209,7 +215,7 @@ class Node(service.MultiService):
         self.write_config("my_nodeid", b32encode(self.nodeid).lower() + "\n")
         self.short_nodeid = b32encode(self.nodeid).lower()[:8] # ready for printing
 
-        tubport = self.get_config("node", "tub.port", "tcp:0")
+        tubport = self.get_config(u"node", u"tub.port", u"tcp:0")
         self.tub.listenOn(tubport)
         # we must wait until our service has started before we can find out
         # our IP address and thus do tub.setLocation, and we can't register
@@ -217,14 +223,14 @@ class Node(service.MultiService):
         self.tub.setServiceParent(self)
 
     def setup_ssh(self):
-        ssh_port = self.get_config("node", "ssh.port", "")
+        ssh_port = self.get_config(u"node", u"ssh.port", u"")
         if ssh_port:
-            ssh_keyfile_config = self.get_config("node", "ssh.authorized_keys_file").decode('utf-8')
+            ssh_keyfile_config = self.get_config(u"node", u"ssh.authorized_keys_file")
             ssh_keyfile = abspath_expanduser_unicode(ssh_keyfile_config, base=self.basedir)
             from allmydata import manhole
-            m = manhole.AuthorizedKeysManhole(ssh_port, ssh_keyfile)
+            m = manhole.AuthorizedKeysManhole(ssh_port.encode('utf-8'), ssh_keyfile)
             m.setServiceParent(self)
-            self.log("AuthorizedKeysManhole listening on %s" % (ssh_port,))
+            self.log(u"AuthorizedKeysManhole listening on %s" % (ssh_port,))
 
     def get_app_versions(self):
         # TODO: merge this with allmydata.get_package_versions
@@ -237,7 +243,7 @@ class Node(service.MultiService):
         from the data."""
         fn = os.path.join(self.basedir, name)
         try:
-            return fileutil.read(fn).strip()
+            return fileutil.read(fn).strip().decode('utf-8')
         except EnvironmentError:
             if not required:
                 return None
@@ -375,7 +381,7 @@ class Node(service.MultiService):
 
         lgfurl_file = os.path.join(self.basedir, "private", "logport.furl").encode(get_filesystem_encoding())
         self.tub.setOption("logport-furlfile", lgfurl_file)
-        lgfurl = self.get_config("node", "log_gatherer.furl", "")
+        lgfurl = self.get_config(u"node", u"log_gatherer.furl", u"")
         if lgfurl:
             # this is in addition to the contents of log-gatherer-furlfile
             self.tub.setOption("log-gatherer-furl", lgfurl)
@@ -397,7 +403,7 @@ class Node(service.MultiService):
         # next time
         fileutil.write_atomically(self._portnumfile, "%d\n" % portnum, mode="")
 
-        location = self.get_config("node", "tub.location", "AUTO")
+        location = self.get_config(u"node", u"tub.location", u"AUTO")
 
         # Replace the location "AUTO", if present, with the detected local addresses.
         split_location = location.split(",")

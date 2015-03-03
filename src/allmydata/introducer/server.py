@@ -25,7 +25,7 @@ class IntroducerNode(node.Node):
         node.Node.__init__(self, basedir)
         self.read_config()
         self.init_introducer()
-        webport = self.get_config("node", "web.port", None)
+        webport = self.get_config(u"node", u"web.port", None)
         if webport:
             self.init_web(webport) # strports string
 
@@ -63,7 +63,7 @@ class IntroducerNode(node.Node):
 
         from allmydata.webish import IntroducerWebishServer
         nodeurl_path = os.path.join(self.basedir, u"node.url")
-        config_staticdir = self.get_config("node", "web.static", "public_html").decode('utf-8')
+        config_staticdir = self.get_config(u"node", u"web.static", u"public_html")
         staticdir = abspath_expanduser_unicode(config_staticdir, base=self.basedir)
         ws = IntroducerWebishServer(self, webport, nodeurl_path, staticdir)
         self.add_service(ws)

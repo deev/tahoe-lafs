@@ -220,6 +220,20 @@ class SimpleStats:
         ret = { 'counters': self.counters, 'stats': stats }
         return ret
 
+def config_hook_params_to_1_1_1(clientdir):
+    cfgfn = os.path.join(clientdir, "tahoe.cfg")
+    oldcfg = open(cfgfn, "rU").read()
+    f = open(cfgfn, "wt")
+    f.write(oldcfg)
+    f.write("\n")
+    f.write("[client]\n")
+    f.write("shares.needed = 1\n")
+    f.write("shares.total = 1\n")
+    f.write("shares.happy = 1\n")
+    f.write("\n")
+    f.close()
+    return None
+
 class NoNetworkGrid(service.MultiService):
     def __init__(self, basedir, num_clients=1, num_servers=10,
                  client_config_hooks={}):

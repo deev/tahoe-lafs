@@ -25,7 +25,7 @@ class KeyGenService(unittest.TestCase, pollmixin.PollMixin):
         self.tub = t = Tub()
         t.setOption("expose-remote-exception-types", False)
         t.setServiceParent(self.parent)
-        t.listenOn("tcp:0")
+        t.listenOn(u"tcp:0")
         t.setLocationAutomatically()
         return fireEventually()
 

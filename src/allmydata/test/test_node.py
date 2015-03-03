@@ -94,7 +94,7 @@ class TestCase(testutil.SignalMixin, unittest.TestCase):
         n = TestNode(basedir)
         n.setServiceParent(self.parent)
         d = n.when_tub_ready()
-        d.addCallback(lambda ign: self.failUnlessEqual(n.get_config("node", "nickname").decode('utf-8'),
+        d.addCallback(lambda ign: self.failUnlessEqual(n.get_config(u"node", u"nickname"),
                                                        u"\u2621"))
         return d
 

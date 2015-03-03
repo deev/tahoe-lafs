@@ -12,6 +12,7 @@ from allmydata.interfaces import IFilesystemNode, IFileNode, \
      IImmutableFileNode, IMutableFileNode, IDirectoryNode
 from foolscap.api import flushEventualQueue
 import allmydata.test.common_util as testutil
+from allmydata.util.assertutil import _assert
 
 import mock
 
@@ -264,11 +265,12 @@ class Basic(testutil.ReallyEqualMixin, unittest.TestCase):
         class MockDropUploader(service.MultiService):
             name = 'drop-upload'
 
-            def __init__(self, client, upload_dircap, local_dir_utf8, inotify=None):
+            def __init__(self, client, upload_dircap, local_dir_u, inotify=None):
+                _assert(isinstance(local_dir_u, unicode), local_dir_u)
                 service.MultiService.__init__(self)
                 self.client = client
                 self.upload_dircap = upload_dircap
-                self.local_dir_utf8 = local_dir_utf8
+                self.local_dir_u = local_dir_u
                 self.inotify = inotify
 
         mock_drop_uploader.side_effect = MockDropUploader
@@ -302,7 +304,7 @@ class Basic(testutil.ReallyEqualMixin, unittest.TestCase):
         self.failUnless(isinstance(uploader, MockDropUploader), uploader)
         self.failUnlessReallyEqual(uploader.client, c1)
         self.failUnlessReallyEqual(uploader.upload_dircap, upload_dircap)
-        self.failUnlessReallyEqual(uploader.local_dir_utf8, local_dir_utf8)
+        self.failUnlessReallyEqual(uploader.local_dir_u, local_dir_utf8.decode('utf-8'))
         self.failUnless(uploader.inotify is None, uploader.inotify)
         self.failUnless(uploader.running)
 

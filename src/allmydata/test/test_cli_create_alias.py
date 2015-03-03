@@ -4,7 +4,7 @@ import urllib
 from allmydata.util import fileutil
 from allmydata.scripts.common import get_aliases
 from allmydata.scripts import cli, runner
-from allmydata.test.no_network import GridTestMixin
+from .no_network import GridTestMixin, config_hook_params_to_1_1_1
 from allmydata.util.encodingutil import quote_output, get_io_encoding
 from .test_cli import CLITestMixin
 
@@ -24,7 +24,7 @@ class CreateAlias(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def test_create(self):
         self.basedir = "cli/CreateAlias/create"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         aliasfile = os.path.join(self.get_clientdir(), "private", "aliases")
 
         d = self.do_cli("create-alias", "tahoe")
@@ -148,7 +148,7 @@ class CreateAlias(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def test_create_unicode(self):
         self.basedir = "cli/CreateAlias/create_unicode"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
 
         try:
             etudes_arg = u"\u00E9tudes".encode(get_io_encoding())

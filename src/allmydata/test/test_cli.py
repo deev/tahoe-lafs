@@ -15,6 +15,8 @@ from allmydata.scripts.common_http import socket_error
 import allmydata.scripts.common_http
 from pycryptopp.publickey import ed25519
 
+from .no_network import config_hook_params_to_1_1_1
+
 # Test that the scripts can be imported.
 from allmydata.scripts import create_node, debug, keygen, startstop_node, \
     tahoe_add_alias, tahoe_backup, tahoe_check, tahoe_cp, tahoe_get, tahoe_ls, \
@@ -695,7 +697,7 @@ class Ln(GridTestMixin, CLITestMixin, unittest.TestCase):
         # exist, 'tahoe ln' should output a useful error message and not
         # a stack trace
         self.basedir = "cli/Ln/ln_without_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("ln", "from", "to")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -715,7 +717,7 @@ class Ln(GridTestMixin, CLITestMixin, unittest.TestCase):
         # If invoked with aliases that don't exist, 'tahoe ln' should
         # output a useful error message and not a stack trace.
         self.basedir = "cli/Ln/ln_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("ln", "havasu:from", "havasu:to")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -826,7 +828,7 @@ class Errors(GridTestMixin, CLITestMixin, unittest.TestCase):
         # When the http connection breaks (such as when node.url is overwritten
         # by a confused user), a user friendly error message should be printed.
         self.basedir = "cli/Errors/test_broken_socket"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
 
         # Simulate a connection error
         def _socket_error(*args, **kwargs):
@@ -848,7 +850,7 @@ class Get(GridTestMixin, CLITestMixin, unittest.TestCase):
         # without an explicit alias and when the default 'tahoe' alias
         # hasn't been created yet.
         self.basedir = "cli/Get/get_without_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli('get', 'file')
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -861,7 +863,7 @@ class Get(GridTestMixin, CLITestMixin, unittest.TestCase):
         # 'tahoe get' should output a useful error message when invoked with
         # an explicit alias that doesn't exist.
         self.basedir = "cli/Get/get_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("get", "nonexistent:file")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -878,7 +880,7 @@ class Manifest(GridTestMixin, CLITestMixin, unittest.TestCase):
         # without an explicit alias when the default 'tahoe' alias is
         # missing.
         self.basedir = "cli/Manifest/manifest_without_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("manifest")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -891,7 +893,7 @@ class Manifest(GridTestMixin, CLITestMixin, unittest.TestCase):
         # 'tahoe manifest' should output a useful error message when invoked
         # with an explicit alias that doesn't exist.
         self.basedir = "cli/Manifest/manifest_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("manifest", "nonexistent:")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -905,7 +907,7 @@ class Manifest(GridTestMixin, CLITestMixin, unittest.TestCase):
 class Mkdir(GridTestMixin, CLITestMixin, unittest.TestCase):
     def test_mkdir(self):
         self.basedir = os.path.dirname(self.mktemp())
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
 
         d = self.do_cli("create-alias", "tahoe")
         d.addCallback(lambda res: self.do_cli("mkdir", "test"))
@@ -919,7 +921,7 @@ class Mkdir(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def test_mkdir_mutable_type(self):
         self.basedir = os.path.dirname(self.mktemp())
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("create-alias", "tahoe")
         def _check((rc, out, err), st):
             self.failUnlessReallyEqual(rc, 0)
@@ -948,7 +950,7 @@ class Mkdir(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def test_mkdir_mutable_type_unlinked(self):
         self.basedir = os.path.dirname(self.mktemp())
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("mkdir", "--format=SDMF")
         def _check((rc, out, err), st):
             self.failUnlessReallyEqual(rc, 0)
@@ -984,7 +986,7 @@ class Mkdir(GridTestMixin, CLITestMixin, unittest.TestCase):
 
     def test_mkdir_unicode(self):
         self.basedir = os.path.dirname(self.mktemp())
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
 
         try:
             motorhead_arg = u"tahoe:Mot\u00F6rhead".encode(get_io_encoding())
@@ -1005,7 +1007,7 @@ class Mkdir(GridTestMixin, CLITestMixin, unittest.TestCase):
         # when invoked with an alias that doesn't exist, 'tahoe mkdir' should
         # output a sensible error message rather than a stack trace.
         self.basedir = "cli/Mkdir/mkdir_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("mkdir", "havasu:")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1028,7 +1030,7 @@ class Unlink(GridTestMixin, CLITestMixin, unittest.TestCase):
         # 'tahoe unlink' should behave sensibly when invoked without an explicit
         # alias before the default 'tahoe' alias has been created.
         self.basedir = "cli/Unlink/%s_without_alias" % (self.command,)
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli(self.command, "afile")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1044,7 +1046,7 @@ class Unlink(GridTestMixin, CLITestMixin, unittest.TestCase):
         # 'tahoe unlink' should behave sensibly when invoked with an explicit
         # alias that doesn't exist.
         self.basedir = "cli/Unlink/%s_with_nonexistent_alias" % (self.command,)
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli(self.command, "nonexistent:afile")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1060,7 +1062,7 @@ class Unlink(GridTestMixin, CLITestMixin, unittest.TestCase):
     def test_unlink_without_path(self):
         # 'tahoe unlink' should give a sensible error message when invoked without a path.
         self.basedir = "cli/Unlink/%s_without_path" % (self.command,)
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         self._create_test_file()
         d = self.do_cli("create-alias", "tahoe")
         d.addCallback(lambda ign: self.do_cli("put", self.datafile, "tahoe:test"))
@@ -1087,7 +1089,7 @@ class Rm(Unlink):
 class Stats(GridTestMixin, CLITestMixin, unittest.TestCase):
     def test_empty_directory(self):
         self.basedir = "cli/Stats/empty_directory"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         c0 = self.g.clients[0]
         self.fileurls = {}
         d = c0.create_dirnode()
@@ -1117,7 +1119,7 @@ class Stats(GridTestMixin, CLITestMixin, unittest.TestCase):
         # alias is created, 'tahoe stats' should output an informative error
         # message, not a stack trace.
         self.basedir = "cli/Stats/stats_without_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("stats")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1130,7 +1132,7 @@ class Stats(GridTestMixin, CLITestMixin, unittest.TestCase):
         # when invoked with an explicit alias that doesn't exist,
         # 'tahoe stats' should output a useful error message.
         self.basedir = "cli/Stats/stats_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("stats", "havasu:")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1146,7 +1148,7 @@ class Webopen(GridTestMixin, CLITestMixin, unittest.TestCase):
         # should output an informative error message instead of a stack
         # trace.
         self.basedir = "cli/Webopen/webopen_with_nonexistent_alias"
-        self.set_up_grid()
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
         d = self.do_cli("webopen", "fake:")
         def _check((rc, out, err)):
             self.failUnlessReallyEqual(rc, 1)
@@ -1156,39 +1158,28 @@ class Webopen(GridTestMixin, CLITestMixin, unittest.TestCase):
         return d
 
     def test_webopen(self):
-        # TODO: replace with @patch that supports Deferreds.
         import webbrowser
         def call_webbrowser_open(url):
             self.failUnlessIn(self.alias_uri.replace(':', '%3A'), url)
             self.webbrowser_open_called = True
-        def _cleanup(res):
-            webbrowser.open = self.old_webbrowser_open
-            return res
+        self.patch(webbrowser, 'open', call_webbrowser_open)
 
-        self.old_webbrowser_open = webbrowser.open
-        try:
-            webbrowser.open = call_webbrowser_open
-
-            self.basedir = "cli/Webopen/webopen"
-            self.set_up_grid()
-            d = self.do_cli("create-alias", "alias:")
-            def _check_alias((rc, out, err)):
-                self.failUnlessReallyEqual(rc, 0, repr((rc, out, err)))
-                self.failUnlessIn("Alias 'alias' created", out)
-                self.failUnlessReallyEqual(err, "")
-                self.alias_uri = get_aliases(self.get_clientdir())["alias"]
-            d.addCallback(_check_alias)
-            d.addCallback(lambda res: self.do_cli("webopen", "alias:"))
-            def _check_webopen((rc, out, err)):
-                self.failUnlessReallyEqual(rc, 0, repr((rc, out, err)))
-                self.failUnlessReallyEqual(out, "")
-                self.failUnlessReallyEqual(err, "")
-                self.failUnless(self.webbrowser_open_called)
-            d.addCallback(_check_webopen)
-            d.addBoth(_cleanup)
-        except:
-            _cleanup(None)
-            raise
+        self.basedir = "cli/Webopen/webopen"
+        self.set_up_grid(num_servers=1, client_config_hooks={0: config_hook_params_to_1_1_1})
+        d = self.do_cli("create-alias", "alias:")
+        def _check_alias((rc, out, err)):
+            self.failUnlessReallyEqual(rc, 0, repr((rc, out, err)))
+            self.failUnlessIn("Alias 'alias' created", out)
+            self.failUnlessReallyEqual(err, "")
+            self.alias_uri = get_aliases(self.get_clientdir())["alias"]
+        d.addCallback(_check_alias)
+        d.addCallback(lambda res: self.do_cli("webopen", "alias:"))
+        def _check_webopen((rc, out, err)):
+            self.failUnlessReallyEqual(rc, 0, repr((rc, out, err)))
+            self.failUnlessReallyEqual(out, "")
+            self.failUnlessReallyEqual(err, "")
+            self.failUnless(self.webbrowser_open_called)
+        d.addCallback(_check_webopen)
         return d
 
 class Options(ReallyEqualMixin, unittest.TestCase):

@@ -87,7 +87,7 @@ class KeyGeneratorService(service.MultiService):
         self.key_generator.setServiceParent(self)
 
         portnum = self.get_portnum()
-        self.listener = self.tub.listenOn(portnum or 'tcp:0')
+        self.listener = self.tub.listenOn(portnum or u'tcp:0')
         d = self.tub.setLocationAutomatically()
         if portnum is None:
             d.addCallback(self.save_portnum)
@@ -97,7 +97,7 @@ class KeyGeneratorService(service.MultiService):
     def get_portnum(self):
         portnumfile = os.path.join(self.basedir, 'portnum')
         if os.path.exists(portnumfile):
-            return file(portnumfile, 'rb').read().strip()
+            return file(portnumfile, 'rb').read().strip().decode('utf-8')
 
     def save_portnum(self, junk):
         portnum = self.listener.getPortnum()

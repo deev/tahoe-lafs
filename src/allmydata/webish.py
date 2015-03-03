@@ -151,8 +151,8 @@ class WebishServer(service.MultiService):
         if staticdir:
             self.root.putChild("static", static.File(staticdir))
         if re.search(r'^\d', webport):
-            webport = "tcp:"+webport # twisted warns about bare "0" or "3456"
-        s = strports.service(webport, site)
+            webport = u"tcp:"+webport # twisted warns about bare "0" or "3456"
+        s = strports.service(webport.encode('utf-8'), site)
         s.setServiceParent(self)
 
         self._scheme = None

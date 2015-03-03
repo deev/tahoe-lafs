@@ -139,10 +139,10 @@ class Client(node.Node, pollmixin.PollMixin):
         self.init_storage()
         self.init_control()
         self.helper = None
-        if self.get_config("helper", "enabled", False, boolean=True):
+        if self.get_config(u"helper", u"enabled", False, boolean=True):
             self.init_helper()
         self._key_generator = KeyGenerator()
-        key_gen_furl = self.get_config("client", "key_generator.furl", None)
+        key_gen_furl = self.get_config(u"client", u"key_generator.furl", None)
         if key_gen_furl:
             self.init_key_gen(key_gen_furl)
         self.init_client()
@@ -164,12 +164,12 @@ class Client(node.Node, pollmixin.PollMixin):
 
         # this needs to happen last, so it can use getServiceNamed() to
         # acquire references to StorageServer and other web-statusable things
-        webport = self.get_config("node", "web.port", None)
+        webport = self.get_config(u"node", u"web.port", None)
         if webport:
-            self.init_web(webport) # strports string
+            self.init_web(webport.encode('utf-8')) # strports string
 
     def _sequencer(self):
-        seqnum_s = self.get_config_from_file("announcement-seqnum")
+        seqnum_s = self.get_config_from_file(u"announcement-seqnum")
         if not seqnum_s:
             seqnum_s = "0"
         seqnum = int(seqnum_s.strip())
@@ -179,7 +179,7 @@ class Client(node.Node, pollmixin.PollMixin):
         return seqnum, nonce
 
     def init_introducer_client(self):
-        self.introducer_furl = self.get_config("client", "introducer.furl")
+        self.introducer_furl = self.get_config(u"client", u"introducer.furl")
         ic = IntroducerClient(self.tub, self.introducer_furl,
                               self.nickname,
                               str(allmydata.__full_version__),
@@ -198,7 +198,7 @@ class Client(node.Node, pollmixin.PollMixin):
                      level=log.BAD, umid="URyI5w")
 
     def init_stats_provider(self):
-        gatherer_furl = self.get_config("client", "stats_gatherer.furl", None)
+        gatherer_furl = self.get_config(u"client", u"stats_gatherer.furl", None)
         self.stats_provider = StatsProvider(self, gatherer_furl)
         self.add_service(self.stats_provider)
         self.stats_provider.register_producer(self)
@@ -207,7 +207,7 @@ class Client(node.Node, pollmixin.PollMixin):
         return { 'node.uptime': time.time() - self.started_timestamp }
 
     def init_secrets(self):
-        lease_s = self.get_or_create_private_config("secret", _make_secret)
+        lease_s = self.get_or_create_private_config(u"secret", _make_secret)
         lease_secret = base32.a2b(lease_s)
         convergence_s = self.get_or_create_private_config('convergence',
                                                           _make_secret)
@@ -220,9 +220,9 @@ class Client(node.Node, pollmixin.PollMixin):
         def _make_key():
             sk_vs,vk_vs = keyutil.make_keypair()
             return sk_vs+"\n"
-        sk_vs = self.get_or_create_private_config("node.privkey", _make_key)
+        sk_vs = self.get_or_create_private_config(u"node.privkey", _make_key)
         sk,vk_vs = keyutil.parse_privkey(sk_vs.strip())
-        self.write_config("node.pubkey", vk_vs+"\n")
+        self.write_config(u"node.pubkey", vk_vs+u"\n")
         self._node_key = sk
 
     def get_long_nodeid(self):
@@ -234,7 +234,7 @@ class Client(node.Node, pollmixin.PollMixin):
         return idlib.nodeid_b2a(self.nodeid)
 
     def _init_permutation_seed(self, ss):
-        seed = self.get_config_from_file("permutation-seed")
+        seed = self.get_config_from_file(u"permutation-seed")
         if not seed:
             have_shares = ss.have_shares()
             if have_shares:
@@ -251,18 +251,18 @@ class Client(node.Node, pollmixin.PollMixin):
                 # pubkey-based serverid
                 vk_bytes = self._node_key.get_verifying_key_bytes()
                 seed = base32.b2a(vk_bytes)
-            self.write_config("permutation-seed", seed+"\n")
+            self.write_config(u"permutation-seed", seed+u"\n")
         return seed.strip()
 
     def init_storage(self):
         # should we run a storage server (and publish it for others to use)?
-        if not self.get_config("storage", "enabled", True, boolean=True):
+        if not self.get_config(u"storage", u"enabled", True, boolean=True):
             return
-        readonly = self.get_config("storage", "readonly", False, boolean=True)
+        readonly = self.get_config(u"storage", u"readonly", False, boolean=True)
 
         storedir = os.path.join(self.basedir, self.STOREDIR)
 
-        data = self.get_config("storage", "reserved_space", None)
+        data = self.get_config(u"storage", u"reserved_space", None)
         try:
             reserved = parse_abbreviated_size(data)
         except ValueError:
@@ -271,28 +271,28 @@ class Client(node.Node, pollmixin.PollMixin):
             raise
         if reserved is None:
             reserved = 0
-        discard = self.get_config("storage", "debug_discard", False,
+        discard = self.get_config(u"storage", u"debug_discard", False,
                                   boolean=True)
 
-        expire = self.get_config("storage", "expire.enabled", False, boolean=True)
+        expire = self.get_config(u"storage", u"expire.enabled", False, boolean=True)
         if expire:
-            mode = self.get_config("storage", "expire.mode") # require a mode
+            mode = self.get_config(u"storage", u"expire.mode") # require a mode
         else:
-            mode = self.get_config("storage", "expire.mode", "age")
+            mode = self.get_config(u"storage", u"expire.mode", u"age")
 
-        o_l_d = self.get_config("storage", "expire.override_lease_duration", None)
+        o_l_d = self.get_config(u"storage", u"expire.override_lease_duration", None)
         if o_l_d is not None:
             o_l_d = parse_duration(o_l_d)
 
         cutoff_date = None
         if mode == "cutoff-date":
-            cutoff_date = self.get_config("storage", "expire.cutoff_date")
+            cutoff_date = self.get_config(u"storage", u"expire.cutoff_date")
             cutoff_date = parse_date(cutoff_date)
 
         sharetypes = []
-        if self.get_config("storage", "expire.immutable", True, boolean=True):
+        if self.get_config(u"storage", u"expire.immutable", True, boolean=True):
             sharetypes.append("immutable")
-        if self.get_config("storage", "expire.mutable", True, boolean=True):
+        if self.get_config(u"storage", u"expire.mutable", True, boolean=True):
             sharetypes.append("mutable")
         expiration_sharetypes = tuple(sharetypes)
 
@@ -322,14 +322,14 @@ class Client(node.Node, pollmixin.PollMixin):
                      level=log.BAD, umid="aLGBKw")
 
     def init_client(self):
-        helper_furl = self.get_config("client", "helper.furl", None)
+        helper_furl = self.get_config(u"client", u"helper.furl", None)
         if helper_furl in ("None", ""):
             helper_furl = None
 
         DEP = self.encoding_params
-        DEP["k"] = int(self.get_config("client", "shares.needed", DEP["k"]))
-        DEP["n"] = int(self.get_config("client", "shares.total", DEP["n"]))
-        DEP["happy"] = int(self.get_config("client", "shares.happy", DEP["happy"]))
+        DEP["k"] = int(self.get_config(u"client", u"shares.needed", DEP["k"]))
+        DEP["n"] = int(self.get_config(u"client", u"shares.total", DEP["n"]))
+        DEP["happy"] = int(self.get_config(u"client", u"shares.happy", DEP["happy"]))
 
         self.init_client_storage_broker()
         self.history = History(self.stats_provider)
@@ -369,7 +369,7 @@ class Client(node.Node, pollmixin.PollMixin):
         #        sb.add_server(s.serverid, s)
 
         # check to see if we're supposed to use the introducer too
-        if self.get_config("client-server-selection", "use_introducer",
+        if self.get_config(u"client-server-selection", u"use_introducer",
                            default=True, boolean=True):
             sb.use_introducer(self.introducer_client)
 
@@ -381,8 +381,8 @@ class Client(node.Node, pollmixin.PollMixin):
         self.blacklist = Blacklist(fn)
 
     def init_nodemaker(self):
-        default = self.get_config("client", "mutable.format", default="SDMF")
-        if default.upper() == "MDMF":
+        default = self.get_config(u"client", u"mutable.format", default=u"SDMF")
+        if default.upper() == u"MDMF":
             self.mutable_file_default = MDMF_VERSION
         else:
             self.mutable_file_default = SDMF_VERSION
@@ -405,7 +405,7 @@ class Client(node.Node, pollmixin.PollMixin):
             c = ControlServer()
             c.setServiceParent(self)
             control_url = self.tub.registerReference(c)
-            self.write_private_config("control.furl", control_url + "\n")
+            self.write_private_config(u"control.furl", control_url + u"\n")
         d.addCallback(_publish)
         d.addErrback(log.err, facility="tahoe.init",
                      level=log.BAD, umid="d3tNXA")
@@ -451,28 +451,29 @@ class Client(node.Node, pollmixin.PollMixin):
 
         from allmydata.webish import WebishServer
         nodeurl_path = os.path.join(self.basedir, "node.url")
-        staticdir_config = self.get_config("node", "web.static", "public_html").decode("utf-8")
+        staticdir_config = self.get_config(u"node", u"web.static", u"public_html")
         staticdir = abspath_expanduser_unicode(staticdir_config, base=self.basedir)
         ws = WebishServer(self, webport, nodeurl_path, staticdir)
         self.add_service(ws)
 
     def init_ftp_server(self):
-        if self.get_config("ftpd", "enabled", False, boolean=True):
-            accountfile = self.get_config("ftpd", "accounts.file", None)
-            accounturl = self.get_config("ftpd", "accounts.url", None)
-            ftp_portstr = self.get_config("ftpd", "port", "8021")
+        if self.get_config(u"ftpd", u"enabled", False, boolean=True):
+            accountfile = self.get_config(u"ftpd", u"accounts.file", None)
+            accounturl = self.get_config(u"ftpd", u"accounts.url", None)
+            ftp_portstr = self.get_config(u"ftpd", u"port", u"8021")
 
             from allmydata.frontends import ftpd
             s = ftpd.FTPServer(self, accountfile, accounturl, ftp_portstr)
             s.setServiceParent(self)
 
     def init_sftp_server(self):
-        if self.get_config("sftpd", "enabled", False, boolean=True):
-            accountfile = self.get_config("sftpd", "accounts.file", None)
-            accounturl = self.get_config("sftpd", "accounts.url", None)
-            sftp_portstr = self.get_config("sftpd", "port", "8022")
-            pubkey_file = self.get_config("sftpd", "host_pubkey_file")
-            privkey_file = self.get_config("sftpd", "host_privkey_file")
+        if self.get_config(u"sftpd", u"enabled", False, boolean=True):
+            accountfile = self.get_config(u"sftpd", u"accounts.file", None)
+            _assert(isinstance(accountfile, unicode), accountfile)
+            accounturl = self.get_config(u"sftpd", u"accounts.url", None)
+            sftp_portstr = self.get_config(u"sftpd", u"port", u"8022")
+            pubkey_file = self.get_config(u"sftpd", u"host_pubkey_file")
+            privkey_file = self.get_config(u"sftpd", u"host_privkey_file")
 
             from allmydata.frontends import sftpd
             s = sftpd.SFTPServer(self, accountfile, accounturl,
@@ -480,13 +481,13 @@ class Client(node.Node, pollmixin.PollMixin):
             s.setServiceParent(self)
 
     def init_drop_uploader(self):
-        if self.get_config("drop_upload", "enabled", False, boolean=True):
-            if self.get_config("drop_upload", "upload.dircap", None):
+        if self.get_config(u"drop_upload", u"enabled", False, boolean=True):
+            if self.get_config(u"drop_upload", u"upload.dircap", None):
                 raise OldConfigOptionError("The [drop_upload]upload.dircap option is no longer supported; please "
                                            "put the cap in a 'private/drop_upload_dircap' file, and delete this option.")
 
-            upload_dircap = self.get_or_create_private_config("drop_upload_dircap")
-            local_dir_utf8 = self.get_config("drop_upload", "local.directory")
+            upload_dircap = self.get_or_create_private_config(u"drop_upload_dircap")
+            local_dir_utf8 = self.get_config(u"drop_upload", u"local.directory")
 
             try:
                 from allmydata.frontends import drop_upload

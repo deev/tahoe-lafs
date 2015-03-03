@@ -1,6 +1,8 @@
 
 import os, sys
 
+import mock
+
 from twisted.trial import unittest
 from twisted.python import filepath, runtime
 from twisted.internet import defer
@@ -14,7 +16,7 @@ from allmydata.test.no_network import GridTestMixin
 from allmydata.test.common_util import ReallyEqualMixin, NonASCIIPathMixin
 from allmydata.test.common import ShouldFailMixin
 
-from allmydata.frontends.drop_upload import DropUploader
+from allmydata.frontends.drop_upload import DropUploader, UsageError
 
 
 class DropUploadTestMixin(GridTestMixin, ShouldFailMixin, ReallyEqualMixin, NonASCIIPathMixin):
@@ -40,7 +42,7 @@ class DropUploadTestMixin(GridTestMixin, ShouldFailMixin, ReallyEqualMixin, NonA
             self.failUnless(IDirectoryNode.providedBy(n))
             self.upload_dirnode = n
             self.upload_dircap = n.get_uri()
-            self.uploader = DropUploader(self.client, self.upload_dircap, self.local_dir.encode('utf-8'),
+            self.uploader = DropUploader(self.client, self.upload_dircap, self.local_dir,
                                          inotify=self.inotify)
             return self.uploader.startService()
         d.addCallback(_made_upload_dir)
@@ -122,8 +124,13 @@ class DropUploadTestMixin(GridTestMixin, ShouldFailMixin, ReallyEqualMixin, NonA
 class MockTest(DropUploadTestMixin, unittest.TestCase):
     """This can run on any platform, and even if twisted.internet.inotify can't be imported."""
 
-    def test_errors(self):
-        self.basedir = "drop_upload.MockTest.test_errors"
+    def test_unencodable_local_directory(self):
+        import allmydata.frontends.drop_upload
+        def fake_get_filesystem_encoding():
+            return 'US-ASCII'
+        self.patch(allmydata.frontends.drop_upload, 'get_filesystem_encoding', fake_get_filesystem_encoding)
+
+        self.basedir = u"drop_upload.MockTest.test_unencodable_local_directory"
         self.set_up_grid()
         errors_dir = os.path.join(self.basedir, "errors_dir")
         os.mkdir(errors_dir)
@@ -135,21 +142,38 @@ class MockTest(DropUploadTestMixin, unittest.TestCase):
             upload_dircap = n.get_uri()
             readonly_dircap = n.get_readonly_uri()
 
-            self.shouldFail(AssertionError, 'invalid local.directory', 'could not be represented',
-                            DropUploader, client, upload_dircap, '\xFF', inotify=fake_inotify)
-            self.shouldFail(AssertionError, 'nonexistent local.directory', 'there is no directory',
-                            DropUploader, client, upload_dircap, os.path.join(self.basedir, "Laputa"), inotify=fake_inotify)
+            self.shouldFail(UsageError, 'invalid local.directory', 'could not be represented',
+                            DropUploader, client, upload_dircap, 'Mot\xc3\xb6rhead'.decode('utf-8'), inotify=fake_inotify)
+
+        d.addCallback(_made_upload_dir)
+        return d
+
+    def test_errors(self):
+        self.basedir = u"drop_upload.MockTest.test_errors"
+        self.set_up_grid()
+        errors_dir = os.path.join(self.basedir, "errors_dir")
+        os.mkdir(errors_dir)
+
+        client = self.g.clients[0]
+        d = client.create_dirnode()
+        def _made_upload_dir(n):
+            self.failUnless(IDirectoryNode.providedBy(n))
+            upload_dircap = n.get_uri()
+            readonly_dircap = n.get_readonly_uri()
+
+            self.shouldFail(UsageError, 'nonexistent local.directory', 'there is no directory',
+                            DropUploader, client, upload_dircap, os.path.join(self.basedir, u"Laputa"), inotify=fake_inotify)
 
             fp = filepath.FilePath(self.basedir).child('NOT_A_DIR')
             fp.touch()
-            self.shouldFail(AssertionError, 'non-directory local.directory', 'is not a directory',
+            self.shouldFail(UsageError, 'non-directory local.directory', 'is not a directory',
                             DropUploader, client, upload_dircap, fp.path, inotify=fake_inotify)
 
-            self.shouldFail(AssertionError, 'bad upload.dircap', 'does not refer to a directory',
+            self.shouldFail(UsageError, 'bad upload.dircap', 'does not refer to a directory',
                             DropUploader, client, 'bad', errors_dir, inotify=fake_inotify)
-            self.shouldFail(AssertionError, 'non-directory upload.dircap', 'does not refer to a directory',
+            self.shouldFail(UsageError, 'non-directory upload.dircap', 'does not refer to a directory',
                             DropUploader, client, 'URI:LIT:foo', errors_dir, inotify=fake_inotify)
-            self.shouldFail(AssertionError, 'readonly upload.dircap', 'is not a writecap to a directory',
+            self.shouldFail(UsageError, 'readonly upload.dircap', 'is not a writecap to a directory',
                             DropUploader, client, readonly_dircap, errors_dir, inotify=fake_inotify)
         d.addCallback(_made_upload_dir)
         return d
